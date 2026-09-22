@@ -1,12 +1,12 @@
 package services
 
 import (
-	"basic-app/auth"
-	"basic-app/config"
-	"basic-app/dto"
-	"basic-app/models"
-	"basic-app/repository"
-	"basic-app/validation"
+	"blogging-app/auth"
+	"blogging-app/config"
+	"blogging-app/dto"
+	"blogging-app/models"
+	"blogging-app/repository"
+	"blogging-app/validation"
 	"context"
 	"crypto/hmac"
 	"errors"

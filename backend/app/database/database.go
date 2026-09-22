@@ -1,7 +1,7 @@
 package database
 
 import (
-	"basic-app/config"
+	"blogging-app/config"
 	"context"
 	"fmt"
 	"log"

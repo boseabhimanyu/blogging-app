@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"basic-app/dto"
-	"basic-app/repository"
-	"basic-app/services"
+	"blogging-app/dto"
+	"blogging-app/repository"
+	"blogging-app/services"
 
 	"github.com/gin-gonic/gin"
 )

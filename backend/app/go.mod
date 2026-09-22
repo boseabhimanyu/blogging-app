@@ -1,4 +1,4 @@
-module basic-app
+module blogging-app
 
 go 1.25.0
 

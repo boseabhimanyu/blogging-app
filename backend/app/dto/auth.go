@@ -1,7 +1,7 @@
 package dto
 
 import (
-	"basic-app/models"
+	"blogging-app/models"
 	"time"
 )
 

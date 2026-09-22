@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"basic-app/config"
-	"basic-app/dto"
-	"basic-app/services"
+	"blogging-app/config"
+	"blogging-app/dto"
+	"blogging-app/services"
 
 	"github.com/gin-gonic/gin"
 )

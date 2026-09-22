@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"basic-app/models"
+	"blogging-app/models"
 )
 
 var ErrUserNotFound = errors.New("user not found")

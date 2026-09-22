@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"basic-app/models"
-	"basic-app/repository"
+	"blogging-app/models"
+	"blogging-app/repository"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -378,7 +378,7 @@ func (r *UserRepository) FindByPhone(
 	ctx context.Context,
 	phone string,
 ) (*models.User, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, databaseTimeout)
 	defer cancel()
 
 	var user models.User
@@ -403,7 +403,7 @@ func (r *UserRepository) FindByAnyEmail(
 	ctx context.Context,
 	email string,
 ) (*models.User, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, databaseTimeout)
 	defer cancel()
 
 	var user models.User
@@ -432,7 +432,7 @@ func (r *UserRepository) FindByLoginIdentifier(
 	ctx context.Context,
 	identifier string,
 ) (*models.User, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, databaseTimeout)
 	defer cancel()
 
 	var user models.User

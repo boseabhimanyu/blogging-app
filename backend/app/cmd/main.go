@@ -1,10 +1,10 @@
 package main
 
 import (
-	"basic-app/config"
-	"basic-app/database"
-	mongorepo "basic-app/repository/mongo"
-	"basic-app/router"
+	"blogging-app/config"
+	"blogging-app/database"
+	mongorepo "blogging-app/repository/mongo"
+	"blogging-app/router"
 	"context"
 	"log"
 	"net/http"

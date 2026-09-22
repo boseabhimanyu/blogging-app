@@ -1,6 +1,6 @@
 package dto
 
-import "basic-app/models"
+import "blogging-app/models"
 
 // UpdateUserProfileRequest contains fields that can be
 // partially updated.

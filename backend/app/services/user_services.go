@@ -11,10 +11,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"basic-app/dto"
-	"basic-app/models"
-	"basic-app/repository"
-	"basic-app/validation"
+	"blogging-app/dto"
+	"blogging-app/models"
+	"blogging-app/repository"
+	"blogging-app/validation"
 
 	"golang.org/x/crypto/bcrypt"
 )

@@ -1,11 +1,11 @@
 package router
 
 import (
-	"basic-app/auth"
-	"basic-app/config"
-	"basic-app/handler"
-	mongorepo "basic-app/repository/mongo"
-	"basic-app/services"
+	"blogging-app/auth"
+	"blogging-app/config"
+	"blogging-app/handler"
+	mongorepo "blogging-app/repository/mongo"
+	"blogging-app/services"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
