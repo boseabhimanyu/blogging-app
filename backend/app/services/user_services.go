@@ -14,6 +14,7 @@ import (
 	"blogging-app/dto"
 	"blogging-app/models"
 	"blogging-app/repository"
+
 	"blogging-app/validation"
 
 	"golang.org/x/crypto/bcrypt"
@@ -49,7 +50,7 @@ func (s *UserService) GetByID(
 	)
 }
 
-func (s *UserService) GetCustomerByID(
+func (s *UserService) GetUserByID(
 	ctx context.Context,
 	customerID string,
 ) (*models.User, error) {
@@ -58,7 +59,7 @@ func (s *UserService) GetCustomerByID(
 		return nil, err
 	}
 
-	if user.Role != models.RoleCustomer {
+	if user.Role != models.RoleVisitor {
 		return nil, ErrInvalidUserRole
 	}
 
@@ -120,7 +121,7 @@ func (s *UserService) UpdateProfile(
 			return nil, err
 		}
 
-		user.Username = username
+		user.Username = strings.ToLower(username)
 		hasUpdates = true
 	}
 
@@ -215,7 +216,7 @@ func (s *UserService) UpdateProfile(
 		}
 
 		if err != nil &&
-			!errors.Is(err, repository.ErrUserNotFound) {
+			!errors.Is(err, ErrUserNotFound) {
 			return nil, err
 		}
 	}
@@ -234,7 +235,7 @@ func (s *UserService) UpdateProfile(
 		}
 
 		if err != nil &&
-			!errors.Is(err, repository.ErrUserNotFound) {
+			!errors.Is(err, ErrUserNotFound) {
 			return nil, err
 		}
 	}
@@ -251,7 +252,7 @@ func (s *UserService) UpdateProfile(
 		}
 
 		if err != nil &&
-			!errors.Is(err, repository.ErrUserNotFound) {
+			!errors.Is(err, ErrUserNotFound) {
 			return nil, err
 		}
 	}
@@ -268,7 +269,7 @@ func (s *UserService) UpdateProfile(
 		}
 
 		if err != nil &&
-			!errors.Is(err, repository.ErrUserNotFound) {
+			!errors.Is(err, ErrUserNotFound) {
 			return nil, err
 		}
 	}
@@ -404,7 +405,7 @@ func (s *UserService) UserStatus(
 	)
 }
 
-func (s *UserService) CreateCustomer(
+func (s *UserService) CreateUser(
 	ctx context.Context,
 	req *dto.RegisterRequest,
 ) (*models.User, error) {
@@ -461,7 +462,7 @@ func (s *UserService) CreateCustomer(
 		return nil, ErrEmailAlreadyExists
 	}
 
-	if err != nil && !errors.Is(err, repository.ErrUserNotFound) {
+	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		return nil, err
 	}
 
@@ -475,7 +476,7 @@ func (s *UserService) CreateCustomer(
 		}
 
 		if err != nil &&
-			!errors.Is(err, repository.ErrUserNotFound) {
+			!errors.Is(err, ErrUserNotFound) {
 			return nil, err
 		}
 	}
@@ -485,7 +486,7 @@ func (s *UserService) CreateCustomer(
 		return nil, ErrUsernameAlreadyExists
 	}
 
-	if err != nil && !errors.Is(err, repository.ErrUserNotFound) {
+	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		return nil, err
 	}
 
@@ -494,7 +495,7 @@ func (s *UserService) CreateCustomer(
 		return nil, ErrPhoneAlreadyExists
 	}
 
-	if err != nil && !errors.Is(err, repository.ErrUserNotFound) {
+	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		return nil, err
 	}
 
@@ -506,7 +507,7 @@ func (s *UserService) CreateCustomer(
 		return nil, err
 	}
 
-	user := models.NewCustomerUser()
+	user := models.NewVisitorUser()
 
 	user.FirstName = firstName
 	user.LastName = lastName
@@ -550,7 +551,7 @@ func (s *UserService) ChangeUserPassword(
 	}
 
 	// Administrators can only reset customer passwords.
-	if user.Role != models.RoleCustomer {
+	if user.Role != models.RoleVisitor {
 		return ErrInvalidUserRole
 	}
 
@@ -569,7 +570,7 @@ func (s *UserService) ChangeUserPassword(
 	)
 }
 
-func (s *UserService) UpdateCustomer(
+func (s *UserService) UpdateUserProfile(
 	ctx context.Context,
 	customerID string,
 	req *dto.UpdateUserProfileRequest,
@@ -582,17 +583,17 @@ func (s *UserService) UpdateCustomer(
 		return nil, err
 	}
 
-	if customer.Role != models.RoleCustomer {
+	if customer.Role != models.RoleVisitor {
 		return nil, ErrInvalidUserRole
 	}
 
 	return s.UpdateProfile(ctx, customerID, req)
 }
 
-func (s *UserService) ListCustomers(
+func (s *UserService) ListUsers(
 	ctx context.Context,
-	query dto.ListCustomersQuery,
-) (*dto.CustomerListResponse, error) {
+	query dto.ListUsersQuery,
+) (*dto.UserListResponse, error) {
 	page := query.Page
 	if page == 0 {
 		page = 1
@@ -613,9 +614,11 @@ func (s *UserService) ListCustomers(
 
 	search := strings.TrimSpace(query.Search)
 
-	customers, total, err := s.userRepository.ListCustomers(
+	// ---> ADD / REPLACE HERE <---
+	users, total, err := s.userRepository.ListUsers(
 		ctx,
-		repository.CustomerListFilter{
+		repository.UserListFilter{
+			Role:   query.Role,
 			Status: query.Status,
 			Search: search,
 			Skip:   int64(page-1) * int64(limit),
@@ -631,8 +634,8 @@ func (s *UserService) ListCustomers(
 		totalPages = (total + int64(limit) - 1) / int64(limit)
 	}
 
-	return &dto.CustomerListResponse{
-		Customers: customers,
+	return &dto.UserListResponse{
+		Users: users, // mapped to Users field in dto.UserListResponse
 		Pagination: dto.Pagination{
 			Page:       page,
 			Limit:      limit,
@@ -640,4 +643,31 @@ func (s *UserService) ListCustomers(
 			TotalPages: totalPages,
 		},
 	}, nil
+}
+
+func (s *UserService) UpdateRole(
+	ctx context.Context,
+	adminID string,
+	targetUserID string,
+	newRole models.UserRole,
+) error {
+	if adminID == targetUserID {
+		return errors.New("cannot change your own role")
+	}
+
+	if !newRole.IsValid() {
+		return ErrInvalidUserRole
+	}
+
+	// Verify user exists and is not already the requested role
+	targetUser, err := s.userRepository.FindByID(ctx, targetUserID)
+	if err != nil {
+		return err
+	}
+
+	if targetUser.Role == newRole {
+		return nil
+	}
+
+	return s.userRepository.UpdateRole(ctx, targetUserID, newRole)
 }

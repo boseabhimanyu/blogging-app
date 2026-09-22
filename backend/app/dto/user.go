@@ -2,9 +2,7 @@ package dto
 
 import "blogging-app/models"
 
-// UpdateUserProfileRequest contains fields that can be
-// partially updated.
-//
+// UpdateUserProfileRequest contains fields that can be partially updated.
 // nil means the field was not provided.
 type UpdateUserProfileRequest struct {
 	FirstName    *string `json:"firstName"`
@@ -25,15 +23,16 @@ type ChangeUserPasswordRequest struct {
 	NewPassword string `json:"newPassword"`
 }
 
-type ListCustomersQuery struct {
-	Page   int    `form:"page"`
-	Limit  int    `form:"limit"`
-	Status *bool  `form:"status"`
-	Search string `form:"search"`
+type ListUsersQuery struct {
+	Page   int              `form:"page"`
+	Limit  int              `form:"limit"`
+	Role   *models.UserRole `form:"role"`
+	Status *bool            `form:"status"`
+	Search string           `form:"search"`
 }
 
-type CustomerListResponse struct {
-	Customers  []models.User `json:"customers"`
+type UserListResponse struct {
+	Users      []models.User `json:"users"`
 	Pagination Pagination    `json:"pagination"`
 }
 
@@ -46,4 +45,8 @@ type Pagination struct {
 
 type UserStatusRequest struct {
 	Status *bool `json:"status"`
+}
+
+type UpdateRoleRequest struct {
+	Role models.UserRole `json:"role" binding:"required"`
 }

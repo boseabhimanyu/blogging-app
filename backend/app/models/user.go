@@ -9,9 +9,20 @@ import (
 type UserRole string
 
 const (
-	RoleAdmin    UserRole = "admin"
-	RoleCustomer UserRole = "customer"
+	RoleAdmin     UserRole = "admin"
+	RolePublisher UserRole = "publisher"
+	RoleVisitor   UserRole = "visitor"
 )
+
+// IsValid checks whether a role is one of the permitted system roles.
+func (r UserRole) IsValid() bool {
+	switch r {
+	case RoleAdmin, RolePublisher, RoleVisitor:
+		return true
+	default:
+		return false
+	}
+}
 
 type User struct {
 	ID bson.ObjectID `bson:"_id" json:"id"`
@@ -42,11 +53,11 @@ type User struct {
 	PinCode      string `bson:"pin_code" json:"pinCode"`
 }
 
-func NewCustomerUser() User {
+func NewVisitorUser() User {
 	now := time.Now().UTC()
 
 	return User{
-		Role:      RoleCustomer,
+		Role:      RoleVisitor,
 		Status:    true,
 		CreatedAt: now,
 		UpdatedAt: now,

@@ -6,6 +6,7 @@ import (
 	"blogging-app/dto"
 	"blogging-app/models"
 	"blogging-app/repository"
+
 	"blogging-app/validation"
 	"context"
 	"crypto/hmac"
@@ -87,7 +88,7 @@ func (s *AuthService) RegisterUser(
 		return nil, ErrEmailAlreadyExists
 	}
 
-	if err != nil && !errors.Is(err, repository.ErrUserNotFound) {
+	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		return nil, err
 	}
 
@@ -103,7 +104,7 @@ func (s *AuthService) RegisterUser(
 
 		if err != nil && !errors.Is(
 			err,
-			repository.ErrUserNotFound,
+			ErrUserNotFound,
 		) {
 			return nil, err
 		}
@@ -114,7 +115,7 @@ func (s *AuthService) RegisterUser(
 		return nil, ErrUsernameAlreadyExists
 	}
 
-	if err != nil && !errors.Is(err, repository.ErrUserNotFound) {
+	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		return nil, err
 	}
 
@@ -123,7 +124,7 @@ func (s *AuthService) RegisterUser(
 		return nil, ErrPhoneAlreadyExists
 	}
 
-	if err != nil && !errors.Is(err, repository.ErrUserNotFound) {
+	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		return nil, err
 	}
 
@@ -135,7 +136,7 @@ func (s *AuthService) RegisterUser(
 		return nil, err
 	}
 
-	user := models.NewCustomerUser()
+	user := models.NewVisitorUser()
 
 	user.FirstName = firstName
 	user.LastName = lastName
@@ -246,7 +247,7 @@ func (s *AuthService) Login(
 		identifier,
 	)
 	if err != nil {
-		if errors.Is(err, repository.ErrUserNotFound) {
+		if errors.Is(err, ErrUserNotFound) {
 			return nil, ErrInvalidCredentials
 		}
 
@@ -319,7 +320,7 @@ func (s *AuthService) RefreshToken(
 
 	user, err := s.userRepository.FindByID(ctx, claims.UserID)
 	if err != nil {
-		if errors.Is(err, repository.ErrUserNotFound) {
+		if errors.Is(err, ErrUserNotFound) {
 			return nil, ErrInvalidRefreshToken
 		}
 
@@ -390,7 +391,7 @@ func (s *AuthService) Logout(
 
 	user, err := s.userRepository.FindByID(ctx, claims.UserID)
 	if err != nil {
-		if errors.Is(err, repository.ErrUserNotFound) {
+		if errors.Is(err, ErrUserNotFound) {
 			return ErrInvalidRefreshToken
 		}
 

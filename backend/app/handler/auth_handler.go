@@ -46,16 +46,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	)
 	if err != nil {
 		switch {
-		case errors.Is(err, services.ErrEmailAlreadyExists):
+		case errors.Is(err, services.ErrEmailAlreadyExists),
+			errors.Is(err, services.ErrAltEmailAlreadyExists),
+			errors.Is(err, services.ErrUsernameAlreadyExists),
+			errors.Is(err, services.ErrPhoneAlreadyExists):
 			c.JSON(http.StatusConflict, gin.H{
 				"error": err.Error(),
 			})
-
-		case errors.Is(err, services.ErrUsernameAlreadyExists):
-			c.JSON(http.StatusConflict, gin.H{
-				"error": err.Error(),
-			})
-
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": err.Error(),
@@ -68,7 +65,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "user registered successfully",
 		"user": gin.H{
-			"id":        user.ID,
+			"id":        user.ID.Hex(),
 			"firstName": user.FirstName,
 			"lastName":  user.LastName,
 			"username":  user.Username,

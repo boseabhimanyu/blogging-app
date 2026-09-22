@@ -9,9 +9,11 @@ import (
 
 	"blogging-app/models"
 	"blogging-app/repository"
+	"blogging-app/services"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+
 	mongodriver "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
@@ -90,7 +92,7 @@ func (r *UserRepository) FindByID(
 
 	if err != nil {
 		if errors.Is(err, mongodriver.ErrNoDocuments) {
-			return nil, repository.ErrUserNotFound
+			return nil, services.ErrUserNotFound
 		}
 
 		return nil, err
@@ -120,7 +122,7 @@ func (r *UserRepository) FindByUsername(
 
 	if err != nil {
 		if errors.Is(err, mongodriver.ErrNoDocuments) {
-			return nil, repository.ErrUserNotFound
+			return nil, services.ErrUserNotFound
 		}
 
 		return nil, err
@@ -174,7 +176,7 @@ func (r *UserRepository) Update(
 	}
 
 	if result.MatchedCount == 0 {
-		return repository.ErrUserNotFound
+		return services.ErrUserNotFound
 	}
 
 	return nil
@@ -214,7 +216,7 @@ func (r *UserRepository) UpdateProfilePic(
 	}
 
 	if result.MatchedCount == 0 {
-		return repository.ErrUserNotFound
+		return services.ErrUserNotFound
 	}
 
 	return nil
@@ -254,7 +256,7 @@ func (r *UserRepository) UpdatePassword(
 	}
 
 	if result.MatchedCount == 0 {
-		return repository.ErrUserNotFound
+		return services.ErrUserNotFound
 	}
 
 	return nil
@@ -297,7 +299,7 @@ func (r *UserRepository) UpdateRefreshToken(
 	}
 
 	if result.MatchedCount == 0 {
-		return repository.ErrUserNotFound
+		return services.ErrUserNotFound
 	}
 
 	return nil
@@ -337,7 +339,7 @@ func (r *UserRepository) UserStatus(
 	}
 
 	if result.MatchedCount == 0 {
-		return repository.ErrUserNotFound
+		return services.ErrUserNotFound
 	}
 
 	return nil
@@ -368,7 +370,7 @@ func (r *UserRepository) Delete(
 	}
 
 	if result.DeletedCount == 0 {
-		return repository.ErrUserNotFound
+		return services.ErrUserNotFound
 	}
 
 	return nil
@@ -389,7 +391,7 @@ func (r *UserRepository) FindByPhone(
 	).Decode(&user)
 
 	if errors.Is(err, mongo.ErrNoDocuments) {
-		return nil, repository.ErrUserNotFound
+		return nil, services.ErrUserNotFound
 	}
 
 	if err != nil {
@@ -418,7 +420,7 @@ func (r *UserRepository) FindByAnyEmail(
 	err := r.collection.FindOne(ctx, filter).Decode(&user)
 
 	if errors.Is(err, mongo.ErrNoDocuments) {
-		return nil, repository.ErrUserNotFound
+		return nil, services.ErrUserNotFound
 	}
 
 	if err != nil {
@@ -448,7 +450,7 @@ func (r *UserRepository) FindByLoginIdentifier(
 	err := r.collection.FindOne(ctx, filter).Decode(&user)
 
 	if errors.Is(err, mongodriver.ErrNoDocuments) {
-		return nil, repository.ErrUserNotFound
+		return nil, services.ErrUserNotFound
 	}
 
 	if err != nil {
@@ -458,15 +460,17 @@ func (r *UserRepository) FindByLoginIdentifier(
 	return &user, nil
 }
 
-func (r *UserRepository) ListCustomers(
+func (r *UserRepository) ListUsers(
 	ctx context.Context,
-	listFilter repository.CustomerListFilter,
+	listFilter repository.UserListFilter,
 ) ([]models.User, int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, databaseTimeout)
 	defer cancel()
 
-	filter := bson.M{
-		"role": models.RoleCustomer,
+	filter := bson.M{}
+
+	if listFilter.Role != nil {
+		filter["role"] = *listFilter.Role
 	}
 
 	if listFilter.Status != nil {
@@ -511,11 +515,49 @@ func (r *UserRepository) ListCustomers(
 	}
 	defer cursor.Close(ctx)
 
-	var customers []models.User
-
-	if err := cursor.All(ctx, &customers); err != nil {
+	var users []models.User
+	if err := cursor.All(ctx, &users); err != nil {
 		return nil, 0, err
 	}
 
-	return customers, total, nil
+	return users, total, nil
+}
+
+// UpdateRole updates only the user's role.
+func (r *UserRepository) UpdateRole(
+	ctx context.Context,
+	userID string,
+	role models.UserRole,
+) error {
+	ctx, cancel := context.WithTimeout(ctx, databaseTimeout)
+	defer cancel()
+
+	objectID, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"role":       role,
+			"updated_at": time.Now().UTC(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{
+			"_id": objectID,
+		},
+		update,
+	)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return services.ErrUserNotFound
+	}
+
+	return nil
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"blogging-app/dto"
-	"blogging-app/repository"
 	"blogging-app/services"
 
 	"github.com/gin-gonic/gin"
@@ -25,16 +24,8 @@ func NewUserHandler(
 }
 
 func (h *UserHandler) Me(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "unauthorized",
-		})
-		return
-	}
-
-	userIDString, ok := userID.(string)
-	if !ok {
+	userID := c.GetString("userID")
+	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "unauthorized",
 		})
@@ -43,10 +34,10 @@ func (h *UserHandler) Me(c *gin.Context) {
 
 	user, err := h.userService.GetMe(
 		c.Request.Context(),
-		userIDString,
+		userID,
 	)
 	if err != nil {
-		if errors.Is(err, repository.ErrUserNotFound) {
+		if errors.Is(err, services.ErrUserNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "user not found",
 			})
@@ -65,16 +56,8 @@ func (h *UserHandler) Me(c *gin.Context) {
 }
 
 func (h *UserHandler) UpdateProfile(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "unauthorized",
-		})
-		return
-	}
-
-	userIDString, ok := userID.(string)
-	if !ok {
+	userID := c.GetString("userID")
+	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "unauthorized",
 		})
@@ -92,12 +75,12 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 
 	user, err := h.userService.UpdateProfile(
 		c.Request.Context(),
-		userIDString,
+		userID,
 		&req,
 	)
 	if err != nil {
 		switch {
-		case errors.Is(err, repository.ErrUserNotFound):
+		case errors.Is(err, services.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "user not found",
 			})
@@ -117,7 +100,6 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 			})
 
 		default:
-			// Validation errors from the service also reach here.
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": err.Error(),
 			})
@@ -132,7 +114,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	})
 }
 
-func (h *UserHandler) CreateCustomer(c *gin.Context) {
+func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req dto.RegisterRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -142,7 +124,7 @@ func (h *UserHandler) CreateCustomer(c *gin.Context) {
 		return
 	}
 
-	user, err := h.userService.CreateCustomer(
+	user, err := h.userService.CreateUser(
 		c.Request.Context(),
 		&req,
 	)
@@ -177,7 +159,7 @@ func (h *UserHandler) CreateCustomer(c *gin.Context) {
 	})
 }
 
-func (h *UserHandler) UpdateCustomer(c *gin.Context) {
+func (h *UserHandler) UpdateUserProfile(c *gin.Context) {
 	customerID := c.Param("id")
 
 	var req dto.UpdateUserProfileRequest
@@ -189,7 +171,7 @@ func (h *UserHandler) UpdateCustomer(c *gin.Context) {
 		return
 	}
 
-	user, err := h.userService.UpdateCustomer(
+	user, err := h.userService.UpdateUserProfile(
 		c.Request.Context(),
 		customerID,
 		&req,
@@ -201,7 +183,7 @@ func (h *UserHandler) UpdateCustomer(c *gin.Context) {
 				"error": err.Error(),
 			})
 
-		case errors.Is(err, repository.ErrUserNotFound):
+		case errors.Is(err, services.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "customer not found",
 			})
@@ -240,9 +222,25 @@ func (h *UserHandler) UpdateCustomer(c *gin.Context) {
 	})
 }
 
-func (h *UserHandler) ListCustomers(c *gin.Context) {
-	var query dto.ListCustomersQuery
+func (h *UserHandler) ListUsers(c *gin.Context) {
+	allowedParams := map[string]bool{
+		"page":   true,
+		"limit":  true,
+		"search": true,
+		"status": true,
+		"role":   true,
+	}
 
+	for key := range c.Request.URL.Query() {
+		if !allowedParams[key] {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "invalid query parameter: " + key,
+			})
+			return
+		}
+	}
+
+	var query dto.ListUsersQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid query parameters",
@@ -250,7 +248,16 @@ func (h *UserHandler) ListCustomers(c *gin.Context) {
 		return
 	}
 
-	result, err := h.userService.ListCustomers(
+	hasRole := query.Role != nil && strings.TrimSpace(string(*query.Role)) != ""
+
+	if strings.TrimSpace(query.Search) == "" && query.Status == nil && !hasRole {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "at least one filter (search, status, or role) must be provided",
+		})
+		return
+	}
+
+	result, err := h.userService.ListUsers(
 		c.Request.Context(),
 		query,
 	)
@@ -264,20 +271,19 @@ func (h *UserHandler) ListCustomers(c *gin.Context) {
 
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "unable to fetch customers",
+				"error": "unable to fetch users",
 			})
 		}
-
 		return
 	}
 
 	c.JSON(http.StatusOK, result)
 }
 
-func (h *UserHandler) GetCustomerByID(c *gin.Context) {
+func (h *UserHandler) GetUserByID(c *gin.Context) {
 	customerID := c.Param("id")
 
-	user, err := h.userService.GetCustomerByID(
+	user, err := h.userService.GetUserByID(
 		c.Request.Context(),
 		customerID,
 	)
@@ -288,7 +294,7 @@ func (h *UserHandler) GetCustomerByID(c *gin.Context) {
 				"error": err.Error(),
 			})
 
-		case errors.Is(err, repository.ErrUserNotFound):
+		case errors.Is(err, services.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "customer not found",
 			})
@@ -347,7 +353,7 @@ func (h *UserHandler) UpdateUserStatus(c *gin.Context) {
 	)
 	if err != nil {
 		switch {
-		case errors.Is(err, repository.ErrUserNotFound):
+		case errors.Is(err, services.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "user not found",
 			})
@@ -394,7 +400,7 @@ func (h *UserHandler) ChangeUserPassword(c *gin.Context) {
 		&req,
 	); err != nil {
 		switch {
-		case errors.Is(err, repository.ErrUserNotFound):
+		case errors.Is(err, services.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "user not found",
 			})
@@ -424,18 +430,10 @@ func (h *UserHandler) ChangeUserPassword(c *gin.Context) {
 }
 
 func (h *UserHandler) UpdateProfilePic(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
+	userID := c.GetString("userID")
+	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "unauthorized",
-		})
-		return
-	}
-
-	userIDString, ok := userID.(string)
-	if !ok || strings.TrimSpace(userIDString) == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "invalid user identity",
 		})
 		return
 	}
@@ -467,7 +465,7 @@ func (h *UserHandler) UpdateProfilePic(c *gin.Context) {
 
 	if err := h.userService.UpdateProfilePic(
 		c.Request.Context(),
-		userIDString,
+		userID,
 		fileHeader,
 	); err != nil {
 		switch {
@@ -492,5 +490,56 @@ func (h *UserHandler) UpdateProfilePic(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "profile picture updated successfully",
+	})
+}
+
+func (h *UserHandler) UpdateRole(c *gin.Context) {
+	adminID := c.GetString("userID")
+	targetUserID := strings.TrimSpace(c.Param("id"))
+
+	if targetUserID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "user id is required",
+		})
+		return
+	}
+
+	var req dto.UpdateRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid request body or missing role",
+		})
+		return
+	}
+
+	err := h.userService.UpdateRole(
+		c.Request.Context(),
+		adminID,
+		targetUserID,
+		req.Role,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrUserNotFound):
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "user not found",
+			})
+
+		case errors.Is(err, services.ErrInvalidUserRole):
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "invalid user role provided",
+			})
+
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": err.Error(),
+			})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "user role updated successfully",
+		"role":    req.Role,
 	})
 }

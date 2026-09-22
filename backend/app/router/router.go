@@ -4,6 +4,7 @@ import (
 	"blogging-app/auth"
 	"blogging-app/config"
 	"blogging-app/handler"
+	"blogging-app/models"
 	mongorepo "blogging-app/repository/mongo"
 	"blogging-app/services"
 	"net/http"
@@ -28,7 +29,7 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"ok":     true,
-			"status": "application is up",
+			"status": "Happy Blogging",
 		})
 	})
 
@@ -54,43 +55,44 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 		protected.GET("/me", userHandler.Me)
 	}
 
-	customerRoutes := r.Group("/api/v1/customers")
+	adminUserRoutes := r.Group("/api/v1/users")
 
-	customerRoutes.Use(
+	adminUserRoutes.Use(
 		auth.AuthMiddleware(
 			cfg.JWTSecret,
 			cfg.AuthAccessCookie,
 		),
-		auth.RequireRoles("admin"),
+		auth.RequireRoles(string(models.RoleAdmin)),
 	)
 
-	customerRoutes.POST("", userHandler.CreateCustomer)
+	adminUserRoutes.POST("", userHandler.CreateUser)
 
 	//--------------------------------------------------------------
-	customerRoutes.GET("", userHandler.ListCustomers)
+	adminUserRoutes.GET("", userHandler.ListUsers)
 
-	// List customers.
+	// List users.
 	//
 	// Pagination:
-	// GET /api/v1/customers?page=1&limit=20
+	// GET /api/v1/users?page=1&limit=20
 	//
 	// Filter by account status:
-	// GET /api/v1/customers?status=true
-	// GET /api/v1/customers?status=false
+	// GET /api/v1/users?status=true
+	// GET /api/v1/users?status=false
 	//
 	// Search across first name, last name, username, email,
 	// alternate email, and phone:
-	// GET /api/v1/customers?search=rahul
+	// GET /api/v1/users?search=rahul
 	//
 	// Filters can be combined:
-	// GET /api/v1/customers?page=1&limit=20&status=true&search=rahul
+	// GET /api/v1/users?page=1&limit=20&status=true&search=rahul
 
 	//--------------------------------------------------------------
 
-	customerRoutes.GET("/:id", userHandler.GetCustomerByID)
-	customerRoutes.PATCH("/:id", userHandler.UpdateCustomer)
-	customerRoutes.PATCH("/:id/status", userHandler.UpdateUserStatus)
-	customerRoutes.PATCH("/:id/password", userHandler.ChangeUserPassword)
+	adminUserRoutes.GET("/:id", userHandler.GetUserByID)
+	adminUserRoutes.PATCH("/:id", userHandler.UpdateUserProfile)
+	adminUserRoutes.PATCH("/:id/status", userHandler.UpdateUserStatus)
+	adminUserRoutes.PATCH("/:id/password", userHandler.ChangeUserPassword)
+	adminUserRoutes.PATCH("/:id/role", userHandler.UpdateRole)
 
 	return r
 }
