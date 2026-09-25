@@ -129,13 +129,24 @@ func (s *PostService) UpdatePost(ctx context.Context, postID bson.ObjectID, acto
 		return nil, ErrForbidden
 	}
 
-	if req.Title != nil && strings.TrimSpace(*req.Title) != "" && strings.TrimSpace(*req.Title) != post.Title {
+	if req.Title != nil && strings.TrimSpace(*req.Title) != "" {
 		post.Title = strings.TrimSpace(*req.Title)
-		newSlug, err := s.generateUniqueSlug(ctx, post.Title)
-		if err != nil {
-			return nil, err
+	}
+
+	// Handle Slug update
+	if req.Slug != nil && strings.TrimSpace(*req.Slug) != "" {
+		cleanedSlug := slugify(*req.Slug)
+		if cleanedSlug != "" && cleanedSlug != post.Slug {
+			// Check if another post already has this slug
+			existing, err := s.postRepo.FindBySlug(ctx, cleanedSlug)
+			if err == nil && existing != nil && existing.ID != post.ID {
+				return nil, errors.New("slug already in use")
+			}
+			post.Slug = cleanedSlug
 		}
-		post.Slug = newSlug
+	} else if req.Title != nil && strings.TrimSpace(*req.Title) != "" && req.Slug == nil {
+		// Optional: only regenerate if title changed and slug wasn't explicitly provided
+		// If you prefer to keep the original slug when title changes, you can omit this block.
 	}
 
 	if req.Summary != nil {
@@ -170,7 +181,6 @@ func (s *PostService) UpdatePost(ctx context.Context, postID bson.ObjectID, acto
 		post.TagIDs = tagObjectIDs
 	}
 
-	// Status change: author or admin can toggle between draft and published
 	if req.Status != nil && *req.Status != post.Status {
 		if *req.Status != models.PostStatusDraft && *req.Status != models.PostStatusPublished {
 			return nil, ErrInvalidStatus

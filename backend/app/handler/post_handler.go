@@ -108,7 +108,7 @@ func (h *PostHandler) UpdatePost(c *gin.Context) {
 		case errors.Is(err, services.ErrForbidden) || errors.Is(err, services.ErrUnauthorizedPublish):
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update post"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Slug already in use"})
 		}
 		return
 	}

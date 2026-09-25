@@ -17,6 +17,7 @@ type CreatePostRequest struct {
 
 type UpdatePostRequest struct {
 	Title       *string            `json:"title"`
+	Slug        *string            `json:"slug"` // Custom slug update
 	Summary     *string            `json:"summary"`
 	Content     *string            `json:"content"`
 	CoverImage  *string            `json:"coverImage"`
