@@ -18,4 +18,5 @@ var (
 	ErrInvalidLimit          = errors.New("limit must be between 1 and 100")
 	ErrCannotChangeOwnStatus = errors.New("admin cannot change their own account status")
 	ErrUserNotFound          = errors.New("user not found")
+	ErrRegistrationDisabled  = errors.New("user registration is currently disabled by administrator")
 )

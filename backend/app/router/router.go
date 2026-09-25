@@ -23,10 +23,12 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 	// Repositories
 	userRepository := mongorepo.NewUserRepository(database)
 	postRepository := mongorepo.NewMongoPostRepository(database)
+	settingRepo := mongorepo.NewMongoSettingRepository(database)
 	// tagRepository := mongorepo.NewTagRepository(database) // Kept nil/dormant for now
 
 	// Services
-	authService := services.NewAuthService(userRepository, cfg)
+	authService := services.NewAuthService(userRepository, cfg, settingRepo)
+	settingService := services.NewSettingService(settingRepo)
 	userService := services.NewUserService(userRepository)
 	postService := services.NewPostService(postRepository, nil)
 
@@ -64,7 +66,7 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 	authHandler := handler.NewAuthHandler(authService, cfg)
 	userHandler := handler.NewUserHandler(userService)
 	postHandler := handler.NewPostHandler(postService)
-
+	settingHandler := handler.NewSettingHandler(settingService)
 	// Global/Public Endpoints
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -144,7 +146,21 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 		// List all posts across all users, with optional filtering
 		adminRoutes.GET("/posts", postHandler.AdminListPosts)
 		adminRoutes.GET("/posts/:id", postHandler.AdminGetPostByID) // Get by ID strictly for admin
+
 	}
 
+	// Public route (optional: allows frontend to know whether to show the "Register" button)
+	r.GET("/api/v1/settings", settingHandler.GetSettings)
+
+	// Admin-only management
+	settingRoutes := r.Group("/api/v1/admin")
+	adminRoutes.Use(
+		authMiddleware,
+		auth.RequireRoles(string(models.RoleAdmin)),
+	)
+	{
+		// ... post routes ...
+		settingRoutes.PATCH("/settings", settingHandler.UpdateSettings)
+	}
 	return r
 }

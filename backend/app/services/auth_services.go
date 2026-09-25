@@ -20,15 +20,18 @@ import (
 type AuthService struct {
 	userRepository repository.UserRepository
 	config         config.Config
+	settingRepo    repository.SettingRepository
 }
 
 func NewAuthService(
 	userRepository repository.UserRepository,
 	cfg config.Config,
+	settingRepo repository.SettingRepository,
 ) *AuthService {
 	return &AuthService{
 		userRepository: userRepository,
 		config:         cfg,
+		settingRepo:    settingRepo,
 	}
 }
 
@@ -38,6 +41,16 @@ func (s *AuthService) RegisterUser(
 	ctx context.Context,
 	req *dto.RegisterRequest,
 ) (*models.User, error) {
+
+	//  Check application settings
+
+	if s.settingRepo != nil {
+		settings, err := s.settingRepo.Get(ctx)
+		if err == nil && settings != nil && !settings.AllowRegistration {
+			return nil, ErrRegistrationDisabled
+		}
+	}
+
 	firstName, err := validation.ValidateName(
 		req.FirstName,
 		"first name",

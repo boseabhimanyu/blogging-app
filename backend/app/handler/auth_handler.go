@@ -46,6 +46,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	)
 	if err != nil {
 		switch {
+		// Registration toggle check -> 403 Forbidden
+		case errors.Is(err, services.ErrRegistrationDisabled):
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": err.Error(),
+			})
+
+		// Conflict errors -> 409 Conflict
 		case errors.Is(err, services.ErrEmailAlreadyExists),
 			errors.Is(err, services.ErrAltEmailAlreadyExists),
 			errors.Is(err, services.ErrUsernameAlreadyExists),
@@ -53,6 +60,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{
 				"error": err.Error(),
 			})
+
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": err.Error(),
