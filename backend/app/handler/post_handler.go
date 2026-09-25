@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -47,36 +48,6 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, post)
-}
-
-// GetPostBySlug - GET /api/v1/posts/:slug (Public, but previews drafts if author/admin is logged in)
-func (h *PostHandler) GetPostBySlug(c *gin.Context) {
-	slug := c.Param("slug")
-	if slug == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "slug is required"})
-		return
-	}
-
-	var viewerID *bson.ObjectID
-	var viewerRole *models.UserRole
-
-	// Attempt to pull user info if authenticated, but don't fail if anonymous
-	if uid, role, err := getUserContext(c); err == nil {
-		viewerID = &uid
-		viewerRole = &role
-	}
-
-	post, err := h.postService.GetPostBySlug(c.Request.Context(), slug, viewerID, viewerRole)
-	if err != nil {
-		if errors.Is(err, services.ErrPostNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "post not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve post"})
-		return
-	}
-
-	c.JSON(http.StatusOK, post)
 }
 
 // UpdatePost - PUT /api/v1/posts/:id (Auth required)
@@ -252,4 +223,89 @@ func getUserContext(c *gin.Context) (bson.ObjectID, models.UserRole, error) {
 	}
 
 	return userID, role, nil
+}
+
+func (h *PostHandler) AdminListPosts(c *gin.Context) {
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "10"), 10, 64)
+
+	var authorID *bson.ObjectID
+	if authorParam := c.Query("authorId"); authorParam != "" {
+		if id, err := bson.ObjectIDFromHex(authorParam); err == nil {
+			authorID = &id
+		}
+	}
+
+	var status *models.PostStatus
+	if statusParam := c.Query("status"); statusParam != "" {
+		s := models.PostStatus(statusParam)
+		status = &s
+	}
+
+	posts, total, err := h.postService.AdminListPosts(c.Request.Context(), authorID, status, page, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list posts"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  posts,
+		"page":  page,
+		"limit": limit,
+		"total": total,
+	})
+}
+
+// GetPostBySlug handles GET /api/v1/posts/:slug
+// Public for published posts; authors and admins can preview drafts via optional auth.
+func (h *PostHandler) GetPostBySlug(c *gin.Context) {
+	slug := strings.TrimSpace(c.Param("slug"))
+	if slug == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "slug is required"})
+		return
+	}
+
+	// Try extracting auth context if present (optional auth)
+	var viewerID *bson.ObjectID
+	var viewerRole *models.UserRole
+
+	if uid, role, err := getUserContext(c); err == nil {
+		viewerID = &uid
+		viewerRole = &role
+	}
+
+	post, err := h.postService.GetPostBySlug(c.Request.Context(), slug, viewerID, viewerRole)
+	if err != nil {
+		if errors.Is(err, services.ErrPostNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "post not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve post"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": post})
+}
+
+// AdminGetPostByID handles GET /api/v1/admin/posts/:id
+// Accessible strictly by Admins to fetch any post by MongoDB ObjectID.
+func (h *PostHandler) AdminGetPostByID(c *gin.Context) {
+	idParam := c.Param("id")
+	postID, err := bson.ObjectIDFromHex(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		return
+	}
+
+	post, err := h.postService.GetPostByID(c.Request.Context(), postID)
+	if err != nil {
+		if errors.Is(err, services.ErrPostNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "post not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve post"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": post})
 }

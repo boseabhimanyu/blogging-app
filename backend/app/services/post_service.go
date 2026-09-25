@@ -259,3 +259,15 @@ func slugify(input string) string {
 	cleaned = nonWordRegex.ReplaceAllString(cleaned, "-")
 	return strings.Trim(cleaned, "-")
 }
+
+func (s *PostService) AdminListPosts(ctx context.Context, authorID *bson.ObjectID, status *models.PostStatus, page, limit int64) ([]models.Post, int64, error) {
+	return s.postRepo.AdminListPosts(ctx, authorID, status, page, limit)
+}
+
+func (s *PostService) GetPostByID(ctx context.Context, postID bson.ObjectID) (*models.Post, error) {
+	post, err := s.postRepo.FindByID(ctx, postID)
+	if err != nil {
+		return nil, ErrPostNotFound
+	}
+	return post, nil
+}

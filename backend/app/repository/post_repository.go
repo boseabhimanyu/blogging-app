@@ -21,4 +21,5 @@ type PostRepository interface {
 	RemoveTagIDFromAllPosts(ctx context.Context, tagID bson.ObjectID) (int64, error)
 	CountByTagID(ctx context.Context, tagID bson.ObjectID) (int64, error)
 	ListPendingApproval(ctx context.Context, page, limit int64) ([]models.Post, int64, error)
+	AdminListPosts(ctx context.Context, authorID *bson.ObjectID, status *models.PostStatus, page, limit int64) ([]models.Post, int64, error)
 }

@@ -135,5 +135,16 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 		postRoutes.GET("/:slug", optionalAuthMiddleware, postHandler.GetPostBySlug)
 	}
 
+	adminRoutes := r.Group("/api/v1/admin")
+	adminRoutes.Use(
+		authMiddleware,
+		auth.RequireRoles(string(models.RoleAdmin)),
+	)
+	{
+		// List all posts across all users, with optional filtering
+		adminRoutes.GET("/posts", postHandler.AdminListPosts)
+		adminRoutes.GET("/posts/:id", postHandler.AdminGetPostByID) // Get by ID strictly for admin
+	}
+
 	return r
 }

@@ -217,3 +217,45 @@ func (r *MongoPostRepository) ListPendingApproval(ctx context.Context, page, lim
 
 	return posts, total, nil
 }
+
+func (r *MongoPostRepository) AdminListPosts(ctx context.Context, authorID *bson.ObjectID, status *models.PostStatus, page, limit int64) ([]models.Post, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+	skip := (page - 1) * limit
+
+	filter := bson.M{}
+
+	if authorID != nil {
+		filter["author_id"] = *authorID
+	}
+	if status != nil && *status != "" {
+		filter["status"] = *status
+	}
+
+	total, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "created_at", Value: -1}}).
+		SetSkip(skip).
+		SetLimit(limit)
+
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	posts := make([]models.Post, 0)
+	if err := cursor.All(ctx, &posts); err != nil {
+		return nil, 0, err
+	}
+
+	return posts, total, nil
+}
