@@ -86,6 +86,17 @@ func EnsurePostIndexes(ctx context.Context, db *mongo.Database) error {
 				{Key: "created_at", Value: -1},
 			},
 		},
+		// Add this to your EnsurePostIndexes function:
+		{
+			Keys:    bson.D{{Key: "slug", Value: 1}},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{
+				{Key: "tag_ids", Value: 1},
+				{Key: "status", Value: 1},
+			},
+		},
 	}
 
 	_, err := posts.Indexes().CreateMany(ctx, indexes)

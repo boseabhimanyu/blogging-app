@@ -20,9 +20,16 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 
 	r.Static("/Uploads", "./Uploads") // Expose file uploads
 
-	// Dependencies
+	// Repositories
 	userRepository := mongorepo.NewUserRepository(database)
+	postRepository := mongorepo.NewMongoPostRepository(database)
+	// tagRepository := mongorepo.NewTagRepository(database) // Kept nil/dormant for now
+
+	// Services
 	authService := services.NewAuthService(userRepository, cfg)
+	userService := services.NewUserService(userRepository)
+	postService := services.NewPostService(postRepository, nil)
+
 	refreshToken := func(
 		ctx context.Context,
 		refreshToken string,
@@ -46,9 +53,17 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 		cfg.JWTExpiryHours,
 		refreshToken,
 	)
-	userService := services.NewUserService(userRepository)
+
+	// Optional auth middleware: extracts identity if logged in, but never blocks anonymous visitors
+	optionalAuthMiddleware := auth.OptionalAuthMiddleware(
+		cfg.JWTSecret,
+		cfg.AuthAccessCookie,
+	)
+
+	// Handlers
 	authHandler := handler.NewAuthHandler(authService, cfg)
 	userHandler := handler.NewUserHandler(userService)
+	postHandler := handler.NewPostHandler(postService)
 
 	// Global/Public Endpoints
 	r.GET("/health", func(c *gin.Context) {
@@ -71,48 +86,54 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 		protected.Use(authMiddleware)
 
 		protected.PATCH("/password", authHandler.ChangePassword)
-		//protected.POST("/refresh", authHandler.Refresh)
 		protected.POST("/logout", authHandler.Logout)
 		protected.PATCH("/me", userHandler.UpdateProfile)
 		protected.PATCH("/me/image", userHandler.UpdateProfilePic)
 		protected.GET("/me", userHandler.Me)
 	}
 
+	// Admin user management routes
 	adminUserRoutes := r.Group("/api/v1/users")
-
 	adminUserRoutes.Use(
 		authMiddleware,
 		auth.RequireRoles(string(models.RoleAdmin)),
 	)
+	{
+		adminUserRoutes.POST("", userHandler.CreateUser)
+		adminUserRoutes.GET("", userHandler.ListUsers)
+		adminUserRoutes.GET("/:id", userHandler.GetUserByID)
+		adminUserRoutes.PATCH("/:id", userHandler.UpdateUserProfile)
+		adminUserRoutes.PATCH("/:id/status", userHandler.UpdateUserStatus)
+		adminUserRoutes.PATCH("/:id/password", userHandler.ChangeUserPassword)
+		adminUserRoutes.PATCH("/:id/role", userHandler.UpdateRole)
+	}
 
-	adminUserRoutes.POST("", userHandler.CreateUser)
+	// Post routes
+	postRoutes := r.Group("/api/v1/posts")
+	{
+		// Public listings (filters: ?tagId=...&page=1&limit=10)
+		postRoutes.GET("", postHandler.ListPublished)
 
-	//--------------------------------------------------------------
-	adminUserRoutes.GET("", userHandler.ListUsers)
+		// Protected post endpoints (Authors & Admins)
+		// Note: Specific paths like /me MUST be registered before /:slug to avoid route collisions
+		protectedPosts := postRoutes.Group("")
+		// protectedPosts.Use(authMiddleware) // if all users want to create and update posts.
+		protectedPosts.Use(
+			authMiddleware,
 
-	// List users.
-	//
-	// Pagination:
-	// GET /api/v1/users?page=1&limit=20
-	//
-	// Filter by account status:
-	// GET /api/v1/users?status=true
-	// GET /api/v1/users?status=false
-	//
-	// Search across first name, last name, username, email,
-	// alternate email, and phone:
-	// GET /api/v1/users?search=rahul
-	//
-	// Filters can be combined:
-	// GET /api/v1/users?page=1&limit=20&status=true&search=rahul
+			auth.RequireRoles(string(models.RolePublisher), string(models.RoleAdmin)),
+		)
 
-	//--------------------------------------------------------------
+		{
+			protectedPosts.POST("", postHandler.CreatePost)
+			protectedPosts.GET("/me", postHandler.ListMyPosts)
+			protectedPosts.PATCH("/:id", postHandler.UpdatePost)
+			protectedPosts.DELETE("/:id", postHandler.DeletePost)
+		}
 
-	adminUserRoutes.GET("/:id", userHandler.GetUserByID)
-	adminUserRoutes.PATCH("/:id", userHandler.UpdateUserProfile)
-	adminUserRoutes.PATCH("/:id/status", userHandler.UpdateUserStatus)
-	adminUserRoutes.PATCH("/:id/password", userHandler.ChangeUserPassword)
-	adminUserRoutes.PATCH("/:id/role", userHandler.UpdateRole)
+		// Public reading with optional auth so authors/admins can preview unpublished drafts
+		postRoutes.GET("/:slug", optionalAuthMiddleware, postHandler.GetPostBySlug)
+	}
 
 	return r
 }

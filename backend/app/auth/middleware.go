@@ -175,3 +175,38 @@ func setAuthCookie(
 		Secure:   secure,
 	})
 }
+
+func OptionalAuthMiddleware(jwtSecret, accessCookieName string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenString, err := c.Cookie(accessCookieName)
+		if err != nil || tokenString == "" {
+			// Check Authorization header fallback if needed
+			tokenString = extractBearerToken(c.GetHeader("Authorization"))
+		}
+
+		if tokenString == "" {
+			c.Next()
+			return
+		}
+
+		claims, err := ValidateToken(tokenString, jwtSecret)
+		if err != nil {
+			// Token is invalid/expired; continue as anonymous visitor
+			c.Next()
+			return
+		}
+
+		// Inject identity into context for handlers that can use it
+		c.Set("userID", claims.UserID)
+		c.Set("userRole", claims.Role)
+
+		c.Next()
+	}
+}
+
+func extractBearerToken(authHeader string) string {
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		return authHeader[7:]
+	}
+	return ""
+}

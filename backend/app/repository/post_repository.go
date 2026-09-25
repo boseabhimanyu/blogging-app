@@ -13,6 +13,12 @@ type PostRepository interface {
 	FindBySlug(ctx context.Context, slug string) (*models.Post, error)
 	Update(ctx context.Context, post *models.Post) error
 	Delete(ctx context.Context, id bson.ObjectID) error
-	ListPublished(ctx context.Context, page, limit int64) ([]models.Post, int64, error)
+
+	// Adjusted & New methods
+	ListPublished(ctx context.Context, categoryID *bson.ObjectID, tagID *bson.ObjectID, page, limit int64) ([]models.Post, int64, error)
 	ListByAuthor(ctx context.Context, authorID bson.ObjectID, page, limit int64) ([]models.Post, int64, error)
+
+	RemoveTagIDFromAllPosts(ctx context.Context, tagID bson.ObjectID) (int64, error)
+	CountByTagID(ctx context.Context, tagID bson.ObjectID) (int64, error)
+	ListPendingApproval(ctx context.Context, page, limit int64) ([]models.Post, int64, error)
 }

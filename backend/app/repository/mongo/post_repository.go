@@ -87,7 +87,7 @@ func (r *MongoPostRepository) Delete(ctx context.Context, id bson.ObjectID) erro
 	return nil
 }
 
-func (r *MongoPostRepository) ListPublished(ctx context.Context, page, limit int64) ([]models.Post, int64, error) {
+func (r *MongoPostRepository) ListPublished(ctx context.Context, categoryID *bson.ObjectID, tagID *bson.ObjectID, page, limit int64) ([]models.Post, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -98,13 +98,22 @@ func (r *MongoPostRepository) ListPublished(ctx context.Context, page, limit int
 
 	filter := bson.M{"status": models.PostStatusPublished}
 
+	// In MongoDB, filter["category_ids"] = *categoryID checks if the array contains that ObjectID
+	if categoryID != nil {
+		filter["category_ids"] = *categoryID
+	}
+
+	if tagID != nil {
+		filter["tag_ids"] = *tagID
+	}
+
 	total, err := r.collection.CountDocuments(ctx, filter)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	opts := options.Find().
-		SetSort(bson.D{{Key: "published_at", Value: -1}}).
+		SetSort(bson.D{{Key: "created_at", Value: -1}}).
 		SetSkip(skip).
 		SetLimit(limit)
 
@@ -114,7 +123,7 @@ func (r *MongoPostRepository) ListPublished(ctx context.Context, page, limit int
 	}
 	defer cursor.Close(ctx)
 
-	var posts []models.Post
+	posts := make([]models.Post, 0)
 	if err := cursor.All(ctx, &posts); err != nil {
 		return nil, 0, err
 	}
@@ -140,6 +149,58 @@ func (r *MongoPostRepository) ListByAuthor(ctx context.Context, authorID bson.Ob
 
 	opts := options.Find().
 		SetSort(bson.D{{Key: "created_at", Value: -1}}).
+		SetSkip(skip).
+		SetLimit(limit)
+
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var posts []models.Post
+	if err := cursor.All(ctx, &posts); err != nil {
+		return nil, 0, err
+	}
+
+	return posts, total, nil
+}
+
+func (r *MongoPostRepository) RemoveTagIDFromAllPosts(ctx context.Context, tagID bson.ObjectID) (int64, error) {
+	filter := bson.M{"tag_ids": tagID}
+	update := bson.M{
+		"$pull": bson.M{"tag_ids": tagID},
+	}
+
+	result, err := r.collection.UpdateMany(ctx, filter, update)
+	if err != nil {
+		return 0, err
+	}
+	return result.ModifiedCount, nil
+}
+
+func (r *MongoPostRepository) CountByTagID(ctx context.Context, tagID bson.ObjectID) (int64, error) {
+	return r.collection.CountDocuments(ctx, bson.M{"tag_ids": tagID})
+}
+
+func (r *MongoPostRepository) ListPendingApproval(ctx context.Context, page, limit int64) ([]models.Post, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+	skip := (page - 1) * limit
+
+	filter := bson.M{"status": models.PostStatusPendingApproval}
+
+	total, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "updated_at", Value: -1}}).
 		SetSkip(skip).
 		SetLimit(limit)
 

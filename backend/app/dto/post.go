@@ -1,27 +1,28 @@
 package dto
 
 import (
-	"time"
-
 	"blogging-app/models"
+	"time"
 )
 
 type CreatePostRequest struct {
-	Title      string            `json:"title" binding:"required,min=3,max=200"`
-	Summary    string            `json:"summary" binding:"max=500"`
-	Content    string            `json:"content" binding:"required"` // The rich editor payload
-	CoverImage string            `json:"coverImage"`
-	Tags       []string          `json:"tags"`
-	Status     models.PostStatus `json:"status"` // Can be "draft" or "published"
+	Title       string            `json:"title" binding:"required,min=3,max=200"`
+	Summary     string            `json:"summary" binding:"max=500"`
+	Content     string            `json:"content" binding:"required"`
+	CoverImage  string            `json:"coverImage"`
+	CategoryIDs []string          `json:"categoryIds"` // Optional array of hex IDs
+	TagIDs      []string          `json:"tagIds"`      // Optional array of hex IDs
+	Status      models.PostStatus `json:"status"`
 }
 
 type UpdatePostRequest struct {
-	Title      *string            `json:"title"`
-	Summary    *string            `json:"summary"`
-	Content    *string            `json:"content"`
-	CoverImage *string            `json:"coverImage"`
-	Tags       *[]string          `json:"tags"`
-	Status     *models.PostStatus `json:"status"`
+	Title       *string            `json:"title"`
+	Summary     *string            `json:"summary"`
+	Content     *string            `json:"content"`
+	CoverImage  *string            `json:"coverImage"`
+	CategoryIDs *[]string          `json:"categoryIds"`
+	TagIDs      *[]string          `json:"tagIds"`
+	Status      *models.PostStatus `json:"status"`
 }
 
 type PostResponse struct {
@@ -32,26 +33,9 @@ type PostResponse struct {
 	Content     string            `json:"content"`
 	CoverImage  string            `json:"coverImage"`
 	AuthorID    string            `json:"authorId"`
-	Tags        []string          `json:"tags"`
+	Tags        []TagResponse     `json:"tags"` // Populated tag objects
 	Status      models.PostStatus `json:"status"`
 	PublishedAt *time.Time        `json:"publishedAt"`
 	CreatedAt   time.Time         `json:"createdAt"`
 	UpdatedAt   time.Time         `json:"updatedAt"`
-}
-
-func ToPostResponse(post *models.Post) PostResponse {
-	return PostResponse{
-		ID:          post.ID.Hex(),
-		Title:       post.Title,
-		Slug:        post.Slug,
-		Summary:     post.Summary,
-		Content:     post.Content,
-		CoverImage:  post.CoverImage,
-		AuthorID:    post.AuthorID.Hex(),
-		Tags:        post.Tags,
-		Status:      post.Status,
-		PublishedAt: post.PublishedAt,
-		CreatedAt:   post.CreatedAt,
-		UpdatedAt:   post.UpdatedAt,
-	}
 }
