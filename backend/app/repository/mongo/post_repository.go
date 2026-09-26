@@ -3,6 +3,7 @@ package mongo
 import (
 	"blogging-app/models"
 	"blogging-app/repository"
+	"blogging-app/services"
 	"context"
 	"errors"
 	"time"
@@ -288,4 +289,37 @@ func (r *MongoPostRepository) ListPublishedByCategory(ctx context.Context, categ
 	}
 
 	return posts, total, nil
+}
+
+func (r *MongoPostRepository) UpdateCoverImage(
+	ctx context.Context,
+	postID bson.ObjectID,
+	coverPath string,
+) error {
+	ctx, cancel := context.WithTimeout(ctx, databaseTimeout)
+	defer cancel()
+
+	update := bson.M{
+		"$set": bson.M{
+			"cover_image": coverPath,
+			"updated_at":  time.Now().UTC(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{
+			"_id": postID,
+		},
+		update,
+	)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return services.ErrPostNotFound
+	}
+
+	return nil
 }

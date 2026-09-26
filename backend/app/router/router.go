@@ -133,6 +133,7 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 			protectedPosts.POST("", postHandler.CreatePost)
 			protectedPosts.GET("/me", postHandler.ListMyPosts)
 			protectedPosts.PATCH("/:id", postHandler.UpdatePost)
+			protectedPosts.PATCH("/:id/image", postHandler.UpdateCoverImage)
 			protectedPosts.DELETE("/:id", postHandler.DeletePost)
 		}
 

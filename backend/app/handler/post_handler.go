@@ -354,3 +354,73 @@ func (h *PostHandler) GetPostsByCategory(c *gin.Context) {
 
 	c.JSON(http.StatusOK, res)
 }
+
+func (h *PostHandler) UpdateCoverImage(c *gin.Context) {
+	postID := c.Param("id")
+	if strings.TrimSpace(postID) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "post id is required",
+		})
+		return
+	}
+
+	userID, role, err := getUserContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "unauthorized",
+		})
+		return
+	}
+
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid multipart form",
+		})
+		return
+	}
+
+	files := c.Request.MultipartForm.File["cover_image"]
+	if len(files) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "cover image is required",
+		})
+		return
+	}
+
+	if len(files) > 1 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "only one cover image can be uploaded at a time",
+		})
+		return
+	}
+
+	fileHeader := files[0]
+
+	if err := h.postService.UpdateCoverImage(
+		c.Request.Context(),
+		postID,
+		userID.Hex(),
+		role,
+		fileHeader,
+	); err != nil {
+		switch {
+		case errors.Is(err, services.ErrPostNotFound):
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": err.Error(),
+			})
+		case errors.Is(err, services.ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": err.Error(),
+			})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "cover image updated successfully",
+	})
+}

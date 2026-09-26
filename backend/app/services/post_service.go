@@ -7,12 +7,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"mime/multipart"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	_ "image/jpeg" // registers JPEG decoder
+	_ "image/png"  // registers PNG decoder
+
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+
+	_ "golang.org/x/image/webp" // registers WebP decoder
 )
 
 var (
@@ -357,4 +367,125 @@ func (s *PostService) GetPublishedPostsByCategorySlug(ctx context.Context, slug 
 		Limit:      limit,
 		TotalPages: totalPages,
 	}, nil
+}
+
+func isLocalCoverImage(path string) bool {
+	cleanPath := filepath.Clean(path)
+	coverDir := filepath.Clean(filepath.Join("Uploads", "coverimage"))
+
+	return strings.HasPrefix(
+		cleanPath,
+		coverDir+string(os.PathSeparator),
+	)
+}
+
+func (s *PostService) UpdateCoverImage(
+	ctx context.Context,
+	postIDHex string,
+	actorIDHex string,
+	actorRole models.UserRole,
+	fileHeader *multipart.FileHeader,
+) error {
+	postIDHex = strings.TrimSpace(postIDHex)
+	if postIDHex == "" {
+		return errors.New("post ID is required")
+	}
+
+	postID, err := bson.ObjectIDFromHex(postIDHex)
+	if err != nil {
+		return errors.New("invalid post ID")
+	}
+
+	actorID, err := bson.ObjectIDFromHex(actorIDHex)
+	if err != nil {
+		return ErrForbidden
+	}
+
+	if fileHeader == nil {
+		return errors.New("cover image is required")
+	}
+
+	const maxFileSize = 2 * 1200 * 675 // 5 MB
+
+	if fileHeader.Size > maxFileSize {
+		return errors.New("cover image must not exceed 2 MB")
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp":
+		// allowed
+	default:
+		return errors.New("cover image must be JPEG, PNG, or WebP")
+	}
+
+	// Inspect image dimensions
+	file, err := fileHeader.Open()
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// image.DecodeConfig reads only image header/metadata without loading full pixels into RAM
+	cfg, _, err := image.DecodeConfig(file)
+	if err != nil {
+		return errors.New("failed to read image dimensions")
+	}
+
+	// Must be landscape: wider than it is tall
+	if cfg.Width <= cfg.Height {
+		return errors.New("cover image must be in landscape orientation (width must be greater than height)")
+	}
+
+	// Minimum dimensions check (e.g., minimum 800px wide for crisp banners)
+	if cfg.Width < 800 {
+		return errors.New("cover image width must be at least 800 pixels")
+	}
+
+	// Retrieve existing post to verify authorization and track old cover
+	post, err := s.postRepo.FindByID(ctx, postID)
+	if err != nil {
+		return ErrPostNotFound
+	}
+
+	// Role and author check
+	if actorRole != models.RoleAdmin && post.AuthorID != actorID {
+		return ErrForbidden
+	}
+
+	oldCoverImage := strings.TrimSpace(post.CoverImage)
+
+	uploadDir := filepath.Join("Uploads", "coverimage")
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		return err
+	}
+
+	fileID := uuid.New().String()
+	filename := fileID + ext
+	filePath := filepath.Join(uploadDir, filename)
+
+	// Save the new image first
+	if err := saveUploadedFile(fileHeader, filePath); err != nil {
+		return err
+	}
+
+	// Update MongoDB with the new image path
+	if err := s.postRepo.UpdateCoverImage(
+		ctx,
+		postID,
+		filePath,
+	); err != nil {
+		// DB update failed, remove newly uploaded file
+		_ = os.Remove(filePath)
+		return err
+	}
+
+	// DB update succeeded, clean up old image if present and local
+	if oldCoverImage != "" &&
+		oldCoverImage != filePath &&
+		isLocalCoverImage(oldCoverImage) {
+		_ = os.Remove(oldCoverImage)
+	}
+
+	return nil
 }
