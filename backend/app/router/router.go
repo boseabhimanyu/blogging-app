@@ -31,7 +31,7 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 	authService := services.NewAuthService(userRepository, cfg, settingRepo)
 	settingService := services.NewSettingService(settingRepo)
 	userService := services.NewUserService(userRepository)
-	postService := services.NewPostService(postRepository, nil)
+	postService := services.NewPostService(postRepository, nil, categoryRepository)
 	categoryService := services.NewCategoryService(categoryRepository)
 
 	refreshToken := func(
@@ -173,6 +173,7 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 	{
 		publicCategories.GET("", categoryHandler.ListCategories)
 		publicCategories.GET("/:slug", categoryHandler.GetCategoryBySlug)
+		publicCategories.GET("/:slug/posts", postHandler.GetPostsByCategory)
 	}
 
 	// -------------------------------------------------------------

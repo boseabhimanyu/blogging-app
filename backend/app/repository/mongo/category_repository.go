@@ -93,3 +93,22 @@ func (r *MongoCategoryRepository) Delete(ctx context.Context, id bson.ObjectID) 
 	}
 	return nil
 }
+
+func (r *MongoCategoryRepository) FindBySlugs(ctx context.Context, slugs []string) ([]models.Category, error) {
+	if len(slugs) == 0 {
+		return []models.Category{}, nil
+	}
+
+	filter := bson.M{"slug": bson.M{"$in": slugs}}
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	categories := make([]models.Category, 0)
+	if err := cursor.All(ctx, &categories); err != nil {
+		return nil, err
+	}
+	return categories, nil
+}

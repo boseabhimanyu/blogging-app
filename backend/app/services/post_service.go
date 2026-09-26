@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 var (
@@ -23,45 +24,50 @@ var (
 )
 
 type PostService struct {
-	postRepo repository.PostRepository
-	tagRepo  repository.TagRepository // Kept optional / unused for now
+	postRepo     repository.PostRepository
+	categoryRepo repository.CategoryRepository
+	tagRepo      repository.TagRepository // Kept optional / unused for now
 }
 
-func NewPostService(postRepo repository.PostRepository, tagRepo repository.TagRepository) *PostService {
+func NewPostService(postRepo repository.PostRepository, tagRepo repository.TagRepository, categoryRepo repository.CategoryRepository) *PostService {
 	return &PostService{
-		postRepo: postRepo,
-		tagRepo:  tagRepo,
+		postRepo:     postRepo,
+		tagRepo:      tagRepo,
+		categoryRepo: categoryRepo,
 	}
 }
 
 // CreatePost allows the author (publisher/admin) to save as draft or publish immediately
 func (s *PostService) CreatePost(ctx context.Context, authorID bson.ObjectID, authorRole models.UserRole, req dto.CreatePostRequest) (*models.Post, error) {
+	// 1. Validate status
+	initialStatus := models.PostStatusDraft
+	var publishedAt *time.Time
+
+	switch req.Status {
+	case "", models.PostStatusDraft:
+		initialStatus = models.PostStatusDraft
+	case models.PostStatusPublished:
+		initialStatus = models.PostStatusPublished
+		now := time.Now().UTC()
+		publishedAt = &now
+	default:
+		// Any other string (like "pudblished") is invalid
+		return nil, ErrInvalidStatus
+	}
+
+	// 2. Resolve category slugs (returns ErrInvalidCategory if invalid)
+	categoryIDs, err := s.resolveCategoryIDs(ctx, req.CategoryIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Generate unique slug
 	slug, err := s.generateUniqueSlug(ctx, req.Title)
 	if err != nil {
 		return nil, err
 	}
 
-	initialStatus := models.PostStatusDraft
-	var publishedAt *time.Time
-
-	// If the author explicitly sets status to published, publish right away
-	if req.Status == models.PostStatusPublished {
-		initialStatus = models.PostStatusPublished
-		now := time.Now().UTC()
-		publishedAt = &now
-	}
-
-	// Categories are optional
-	categoryObjectIDs := make([]bson.ObjectID, 0)
-	if len(req.CategoryIDs) > 0 {
-		for _, idHex := range req.CategoryIDs {
-			if objID, err := bson.ObjectIDFromHex(idHex); err == nil {
-				categoryObjectIDs = append(categoryObjectIDs, objID)
-			}
-		}
-	}
-
-	// Tags are optional
+	// Tags optional
 	tagObjectIDs := make([]bson.ObjectID, 0)
 	if len(req.TagIDs) > 0 {
 		for _, idHex := range req.TagIDs {
@@ -79,7 +85,7 @@ func (s *PostService) CreatePost(ctx context.Context, authorID bson.ObjectID, au
 		Content:     req.Content,
 		CoverImage:  req.CoverImage,
 		AuthorID:    authorID,
-		CategoryIDs: categoryObjectIDs,
+		CategoryIDs: categoryIDs,
 		TagIDs:      tagObjectIDs,
 		Status:      initialStatus,
 		PublishedAt: publishedAt,
@@ -144,9 +150,6 @@ func (s *PostService) UpdatePost(ctx context.Context, postID bson.ObjectID, acto
 			}
 			post.Slug = cleanedSlug
 		}
-	} else if req.Title != nil && strings.TrimSpace(*req.Title) != "" && req.Slug == nil {
-		// Optional: only regenerate if title changed and slug wasn't explicitly provided
-		// If you prefer to keep the original slug when title changes, you can omit this block.
 	}
 
 	if req.Summary != nil {
@@ -161,16 +164,16 @@ func (s *PostService) UpdatePost(ctx context.Context, postID bson.ObjectID, acto
 		post.CoverImage = *req.CoverImage
 	}
 
+	// Resolve category slugs to ObjectIDs and validate their existence
 	if req.CategoryIDs != nil {
-		categoryObjectIDs := make([]bson.ObjectID, 0)
-		for _, idHex := range *req.CategoryIDs {
-			if objID, err := bson.ObjectIDFromHex(idHex); err == nil {
-				categoryObjectIDs = append(categoryObjectIDs, objID)
-			}
+		categoryIDs, err := s.resolveCategoryIDs(ctx, *req.CategoryIDs)
+		if err != nil {
+			return nil, err
 		}
-		post.CategoryIDs = categoryObjectIDs
+		post.CategoryIDs = categoryIDs
 	}
 
+	// Tags are optional (parsed from hex IDs)
 	if req.TagIDs != nil {
 		tagObjectIDs := make([]bson.ObjectID, 0)
 		for _, idHex := range *req.TagIDs {
@@ -270,4 +273,88 @@ func (s *PostService) GetPostByID(ctx context.Context, postID bson.ObjectID) (*m
 		return nil, ErrPostNotFound
 	}
 	return post, nil
+}
+
+func (s *PostService) resolveCategoryIDs(ctx context.Context, slugs []string) ([]bson.ObjectID, error) {
+	if len(slugs) == 0 {
+		return []bson.ObjectID{}, nil
+	}
+
+	// Deduplicate and normalize slugs
+	slugMap := make(map[string]struct{})
+	cleanSlugs := make([]string, 0, len(slugs))
+	for _, raw := range slugs {
+		slug := strings.TrimSpace(strings.ToLower(raw))
+		if slug != "" {
+			if _, exists := slugMap[slug]; !exists {
+				slugMap[slug] = struct{}{}
+				cleanSlugs = append(cleanSlugs, slug)
+			}
+		}
+	}
+
+	if len(cleanSlugs) == 0 {
+		return []bson.ObjectID{}, nil
+	}
+
+	categories, err := s.categoryRepo.FindBySlugs(ctx, cleanSlugs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Guard: every requested category slug must exist
+	if len(categories) != len(cleanSlugs) {
+		return nil, ErrInvalidCategory
+	}
+
+	ids := make([]bson.ObjectID, len(categories))
+	for i, c := range categories {
+		ids[i] = c.ID
+	}
+	return ids, nil
+}
+
+type PaginatedPostsResponse struct {
+	Posts      []models.Post    `json:"posts"`
+	Category   *models.Category `json:"category"`
+	Total      int64            `json:"total"`
+	Page       int64            `json:"page"`
+	Limit      int64            `json:"limit"`
+	TotalPages int64            `json:"totalPages"`
+}
+
+func (s *PostService) GetPublishedPostsByCategorySlug(ctx context.Context, slug string, page, limit int64) (*PaginatedPostsResponse, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 50 {
+		limit = 10
+	}
+	skip := (page - 1) * limit
+
+	// 1. Resolve category by slug
+	category, err := s.categoryRepo.FindBySlug(ctx, slug)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrCategoryNotFound
+		}
+		return nil, err
+	}
+
+	// 2. Fetch published posts for this category ID
+	posts, total, err := s.postRepo.ListPublishedByCategory(ctx, category.ID, limit, skip)
+	if err != nil {
+		return nil, err
+	}
+
+	totalPages := (total + limit - 1) / limit
+
+	return &PaginatedPostsResponse{
+		Posts:      posts,
+		Category:   category,
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+		TotalPages: totalPages,
+	}, nil
 }

@@ -17,6 +17,7 @@ type PostRepository interface {
 	// Adjusted & New methods
 	ListPublished(ctx context.Context, categoryID *bson.ObjectID, tagID *bson.ObjectID, page, limit int64) ([]models.Post, int64, error)
 	ListByAuthor(ctx context.Context, authorID bson.ObjectID, page, limit int64) ([]models.Post, int64, error)
+	ListPublishedByCategory(ctx context.Context, categoryID bson.ObjectID, limit, skip int64) ([]models.Post, int64, error)
 
 	RemoveTagIDFromAllPosts(ctx context.Context, tagID bson.ObjectID) (int64, error)
 	CountByTagID(ctx context.Context, tagID bson.ObjectID) (int64, error)

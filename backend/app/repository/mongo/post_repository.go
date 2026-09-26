@@ -259,3 +259,33 @@ func (r *MongoPostRepository) AdminListPosts(ctx context.Context, authorID *bson
 
 	return posts, total, nil
 }
+
+func (r *MongoPostRepository) ListPublishedByCategory(ctx context.Context, categoryID bson.ObjectID, limit, skip int64) ([]models.Post, int64, error) {
+	filter := bson.M{
+		"category_ids": categoryID,
+		"status":       models.PostStatusPublished,
+	}
+
+	total, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "published_at", Value: -1}}).
+		SetLimit(limit).
+		SetSkip(skip)
+
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	posts := make([]models.Post, 0)
+	if err := cursor.All(ctx, &posts); err != nil {
+		return nil, 0, err
+	}
+
+	return posts, total, nil
+}

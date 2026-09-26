@@ -39,18 +39,24 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 
 	post, err := h.postService.CreatePost(c.Request.Context(), userID, role, req)
 	if err != nil {
-		if errors.Is(err, services.ErrUnauthorizedPublish) {
+		switch {
+		case errors.Is(err, services.ErrUnauthorizedPublish):
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-			return
+
+		case errors.Is(err, services.ErrInvalidCategory),
+			errors.Is(err, services.ErrInvalidStatus):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create post"})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create post"})
 		return
 	}
 
 	c.JSON(http.StatusCreated, post)
 }
 
-// UpdatePost - PUT /api/v1/posts/:id (Auth required)
+// UpdatePost - PATCH /api/v1/posts/:id (Auth required)
 func (h *PostHandler) UpdatePost(c *gin.Context) {
 	postIDHex := c.Param("id")
 	postID, err := bson.ObjectIDFromHex(postIDHex)
@@ -74,12 +80,27 @@ func (h *PostHandler) UpdatePost(c *gin.Context) {
 	post, err := h.postService.UpdatePost(c.Request.Context(), postID, userID, role, req)
 	if err != nil {
 		switch {
+		// 404 Not Found
 		case errors.Is(err, services.ErrPostNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		case errors.Is(err, services.ErrForbidden) || errors.Is(err, services.ErrUnauthorizedPublish):
+
+		// 403 Forbidden
+		case errors.Is(err, services.ErrForbidden),
+			errors.Is(err, services.ErrUnauthorizedPublish):
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+
+		// 409 Conflict (Slug collision)
+		case errors.Is(err, services.ErrSlugAlreadyInUse):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+
+		// 400 Bad Request (Invalid Category, Bad Status, etc.)
+		case errors.Is(err, services.ErrInvalidCategory),
+			errors.Is(err, services.ErrInvalidStatus):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+
+		// 500 Internal Server Error (Actual unexpected system errors)
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Slug already in use"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update post"})
 		}
 		return
 	}
@@ -308,4 +329,28 @@ func (h *PostHandler) AdminGetPostByID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": post})
+}
+
+// GetPostsByCategory handles GET /api/v1/categories/:slug/posts
+func (h *PostHandler) GetPostsByCategory(c *gin.Context) {
+	slug := strings.TrimSpace(c.Param("slug"))
+	if slug == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "category slug is required"})
+		return
+	}
+
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "10"), 10, 64)
+
+	res, err := h.postService.GetPublishedPostsByCategorySlug(c.Request.Context(), slug, page, limit)
+	if err != nil {
+		if errors.Is(err, services.ErrCategoryNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "category not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch posts for category"})
+		return
+	}
+
+	c.JSON(http.StatusOK, res)
 }

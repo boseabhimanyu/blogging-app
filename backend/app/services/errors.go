@@ -19,4 +19,6 @@ var (
 	ErrCannotChangeOwnStatus = errors.New("admin cannot change their own account status")
 	ErrUserNotFound          = errors.New("user not found")
 	ErrRegistrationDisabled  = errors.New("user registration is currently disabled by administrator")
+	ErrInvalidCategory       = errors.New("one or more specified categories do not exist")
+	ErrSlugAlreadyInUse      = errors.New("slug already in use")
 )
