@@ -24,6 +24,7 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 	userRepository := mongorepo.NewUserRepository(database)
 	postRepository := mongorepo.NewMongoPostRepository(database)
 	settingRepo := mongorepo.NewMongoSettingRepository(database)
+	categoryRepository := mongorepo.NewMongoCategoryRepository(database)
 	// tagRepository := mongorepo.NewTagRepository(database) // Kept nil/dormant for now
 
 	// Services
@@ -31,6 +32,7 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 	settingService := services.NewSettingService(settingRepo)
 	userService := services.NewUserService(userRepository)
 	postService := services.NewPostService(postRepository, nil)
+	categoryService := services.NewCategoryService(categoryRepository)
 
 	refreshToken := func(
 		ctx context.Context,
@@ -67,6 +69,7 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 	userHandler := handler.NewUserHandler(userService)
 	postHandler := handler.NewPostHandler(postService)
 	settingHandler := handler.NewSettingHandler(settingService)
+	categoryHandler := handler.NewCategoryHandler(categoryService)
 	// Global/Public Endpoints
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -162,5 +165,30 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 		// ... post routes ...
 		settingRoutes.PATCH("/settings", settingHandler.UpdateSettings)
 	}
+
+	// -------------------------------------------------------------
+	// Public Category Endpoints (Readers & UI)
+	// -------------------------------------------------------------
+	publicCategories := r.Group("/api/v1/categories")
+	{
+		publicCategories.GET("", categoryHandler.ListCategories)
+		publicCategories.GET("/:slug", categoryHandler.GetCategoryBySlug)
+	}
+
+	// -------------------------------------------------------------
+	// Admin-Only Category Management (CUD)
+	// -------------------------------------------------------------
+	adminCategories := r.Group("/api/v1/admin/categories")
+	adminCategories.Use(
+		authMiddleware,
+		auth.RequireRoles(string(models.RoleAdmin)),
+	)
+	{
+		adminCategories.POST("", categoryHandler.CreateCategory)
+		adminCategories.PATCH("/:id", categoryHandler.UpdateCategory)
+		adminCategories.GET("/:id", categoryHandler.GetCategoryByID)
+		adminCategories.DELETE("/:id", categoryHandler.DeleteCategory)
+	}
+
 	return r
 }
