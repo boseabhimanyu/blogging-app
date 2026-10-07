@@ -18,11 +18,12 @@ type Config struct {
 	JWTExpiryHours         int
 	RefreshTokenExpiryDays int
 
-	AuthAccessCookie  string
-	AuthRefreshCookie string
-
-	CookieSecure bool
-	GinMode      string
+	AuthAccessCookie   string
+	AuthRefreshCookie  string
+	AuthCookieSameSite string
+	CookieSecure       bool
+	GinMode            string
+	AllowedOrigins     []string
 }
 
 func Load() (Config, error) {
@@ -102,6 +103,14 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	// Cookie SameSite
+	authCookieSameSite, err := extractEnv(
+		"COOKIE_SAME_SITE",
+	)
+	if err != nil {
+		return Config{}, err
+	}
+
 	cookieSecureStr, err := extractEnv("COOKIE_SECURE")
 	if err != nil {
 		return Config{}, err
@@ -120,6 +129,17 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	allowedOriginsStr, err := extractEnv("ALLOWED_ORIGINS")
+	if err != nil {
+		return Config{}, err
+	}
+
+	allowedOrigins := strings.Split(allowedOriginsStr, ",")
+
+	for i := range allowedOrigins {
+		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
+	}
+
 	config := Config{
 		MongoUri:               mongoURI,
 		MongoDB:                mongoDB,
@@ -129,8 +149,10 @@ func Load() (Config, error) {
 		AuthAccessCookie:       authAccessCookie,
 		AuthRefreshCookie:      authRefreshCookie,
 		RefreshTokenExpiryDays: refreshTokenExpiryDays,
+		AuthCookieSameSite:     authCookieSameSite,
 		CookieSecure:           cookieSecure,
 		GinMode:                ginMode,
+		AllowedOrigins:         allowedOrigins,
 	}
 
 	if err := config.Validate(); err != nil {
@@ -182,9 +204,20 @@ func (c Config) Validate() error {
 		)
 	}
 
+	if c.AuthCookieSameSite == "" {
+		return errors.New(
+			"cookie SameSite setting is missing",
+		)
+	}
+
 	if c.GinMode == "" {
 		return errors.New("Gin mode is missing")
 	}
+
+	if len(c.AllowedOrigins) == 0 {
+		return errors.New("ALLOWED_ORIGINS missing")
+	}
+
 	return nil
 }
 
