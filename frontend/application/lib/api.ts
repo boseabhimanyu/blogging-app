@@ -7,24 +7,51 @@ const STORAGE_BASE = process.env.NEXT_PUBLIC_STORAGE_URL || "http://localhost:50
 
 export type UserRole = "admin" | "publisher" | "visitor";
 export type PostStatus = "draft" | "published";
-// Add near the top or export section in lib/api.ts:
+
 export const getAccessToken = (): string | null => null;
 export const setTokens = (_accessToken?: string, _refreshToken?: string) => {};
 export const clearTokens = () => {};
 
 export interface User {
-  id?: string;
+  id: string;
+  firstName: string;
+  lastName: string;
   username: string;
   email: string;
   altEmail?: string;
+  phone?: string;
+  role: "admin" | "publisher" | "visitor";
+  profilePic?: string;
+  status: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
+  dateOfBirth?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  pinCode?: string;
+}
+
+export interface UpdateProfilePayload {
   firstName?: string;
   lastName?: string;
-  name?: string;
-  bio?: string;
-  role: UserRole;
-  profilePic?: string;
+  username?: string;
+  email?: string;
+  altEmail?: string;
   phone?: string;
-  createdAt: string;
+  dateOfBirth?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  pinCode?: string;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface Post {
@@ -81,7 +108,6 @@ export interface UserListResponse {
   pagination: Pagination;
 }
 
-
 // --- Storage URL Formatter ---
 
 export const getAssetUrl = (path?: string): string => {
@@ -95,7 +121,7 @@ export const getAssetUrl = (path?: string): string => {
 
 const apiClient = axios.create({
   baseURL: API_BASE,
-  withCredentials: true, // Crucial: enables sending and receiving HttpOnly cookies across origins
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
@@ -112,8 +138,6 @@ apiClient.interceptors.response.use(
       originalRequest?.url?.includes("/auth/register") ||
       originalRequest?.url?.includes("/auth/refresh");
 
-    const isSessionCheck = originalRequest?.url?.includes("/auth/me");
-
     // If 401 on an authenticated endpoint, attempt cookie-based refresh
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute && typeof window !== "undefined") {
       originalRequest._retry = true;
@@ -124,12 +148,8 @@ apiClient.interceptors.response.use(
           {},
           { withCredentials: true }
         );
-        // Retry original request with newly rotated cookie
         return apiClient(originalRequest);
       } catch (refreshErr) {
-        // Only kick to /login if:
-        // 1. The user is currently inside /dashboard, OR
-        // 2. It was a protected action, NOT a silent background /auth/me check
         const isDashboardRoute = window.location.pathname.startsWith("/dashboard");
 
         if (isDashboardRoute && !window.location.pathname.includes("/login")) {
@@ -153,9 +173,9 @@ apiClient.interceptors.response.use(
 export const api = {
   auth: {
     register: async (payload: RegisterPayload) => {
-  const { data } = await apiClient.post<AuthResponse>("/auth/register", payload);
-  return data;
-},
+      const { data } = await apiClient.post<AuthResponse>("/auth/register", payload);
+      return data;
+    },
 
     login: async (payload: LoginPayload) => {
       const { data } = await apiClient.post<AuthResponse>("/auth/login", payload);
@@ -168,54 +188,46 @@ export const api = {
     },
 
     me: async (): Promise<User> => {
-  const { data } = await apiClient.get<{ user?: User } | User>("/auth/me");
-  // If backend returns { user: { ... } }, return data.user, else return data directly
-  if ("user" in data && data.user) {
-    return data.user;
-  }
-  return data as User;
-},
-
-    updateProfile: async (payload: Partial<User>) => {
-      const { data } = await apiClient.patch<User>("/auth/me", payload);
-      return data;
+      const res = await apiClient.get<{ user: User }>("/auth/me");
+      return res.data.user;
     },
 
-    updateProfilePic: async (file: File) => {
-      const formData = new FormData();
-      formData.append("profile_pic", file);
-      const { data } = await apiClient.patch<{ message: string; profilePic: string }>(
-        "/auth/me/image",
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
-      return data;
+    updateProfile: async (payload: UpdateProfilePayload): Promise<User> => {
+      const res = await apiClient.patch<{ message: string; user: User }>("/auth/me", payload);
+      return res.data.user;
     },
 
-    changePassword: async (payload: { currentPassword: string; newPassword: string }) => {
-      const { data } = await apiClient.patch<{ message: string }>("/auth/password", payload);
-      return data;
+    updateProfilePic: async (formData: FormData): Promise<{ message: string }> => {
+      const res = await apiClient.patch<{ message: string }>("/auth/me/image", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return res.data;
+    },
+
+    changePassword: async (payload: ChangePasswordPayload): Promise<{ message: string }> => {
+      const res = await apiClient.patch<{ message: string }>("/auth/password", payload);
+      return res.data;
     },
   },
 
   posts: {
     list: async (params?: {
-  page?: number;
-  limit?: number;
-  category?: string;
-  tag?: string;
-  status?: string;
-  search?: string;
-}): Promise<{
-  posts: Post[];
-  total?: number;
-  pagination?: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}> => {
+      page?: number;
+      limit?: number;
+      category?: string;
+      tag?: string;
+      status?: string;
+      search?: string;
+    }): Promise<{
+      posts: Post[];
+      total?: number;
+      pagination?: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+      };
+    }> => {
       const { data } = await apiClient.get<{ posts: Post[]; total: number }>("/posts", {
         params,
       });

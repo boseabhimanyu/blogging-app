@@ -52,10 +52,10 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["admin"],
   },
   {
-    label: "Account & Profile",
-    href: "/dashboard/settings",
-    icon: Settings,
-    roles: ["visitor", "publisher", "admin"],
+  label: "Account & Profile",
+  href: "/profile",
+  icon: Settings,
+  roles: ["visitor", "publisher", "admin"],
   },
 ];
 
@@ -141,7 +141,7 @@ export default function DashboardLayout({
 
           {/* User Profile Capsule (Clickable -> Account & Profile) */}
           <Link
-            href="/dashboard/settings"
+            href="/profile"
             className="rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center gap-3 hover:bg-white/[0.06] hover:border-cyan-500/30 transition-all group"
             title="Manage Account & Profile"
           >
@@ -161,7 +161,7 @@ export default function DashboardLayout({
 
             <div className="overflow-hidden">
               <p className="text-xs font-semibold text-white group-hover:text-cyan-300 transition-colors truncate">
-                {user.name || user.username}
+                {user.firstName || user.username}
               </p>
               <div className="flex items-center gap-1 mt-0.5">
                 {user.role === "admin" && (

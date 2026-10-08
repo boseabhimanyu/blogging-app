@@ -116,14 +116,14 @@ export function GlassNavbar({ user: initialUser }: GlassNavbarProps) {
               </Link>
 
               {/* Settings / Profile link */}
-              <Link href="/dashboard/settings">
-                <GlassButton variant="ghost" size="sm" title="Profile" className="flex items-center gap-1.5">
-                  <UserCircle className="h-4 w-4 text-slate-300" />
-                  <span className="hidden sm:inline text-xs font-normal text-slate-300">
-                    {currentUser.username}
-                  </span>
-                </GlassButton>
-              </Link>
+                <Link href="/profile">
+                  <GlassButton variant="ghost" size="sm" title="Profile" className="flex items-center gap-1.5">
+                    <UserCircle className="h-4 w-4 text-slate-300" />
+                    <span className="hidden sm:inline text-xs font-normal text-slate-300">
+                      {currentUser.username}
+                    </span>
+                  </GlassButton>
+                </Link>
 
               {/* Sign out button */}
               <GlassButton
