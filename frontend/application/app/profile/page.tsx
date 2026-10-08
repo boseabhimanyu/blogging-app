@@ -4,7 +4,9 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, getAssetUrl, type User } from "@/lib/api";
 import { GlassButton } from "@/components/ui/GlassButton";
+import Link from "next/link";
 import {
+  ArrowLeft,
   UserCircle,
   ShieldCheck,
   Feather,
@@ -64,7 +66,10 @@ export default function ProfilePage() {
         email: data.email || "",
         altEmail: data.altEmail || "",
         phone: data.phone || "",
-        dateOfBirth: formatDateForInput(data.dateOfBirth), // 👈 Converts output back to "26-07-1986"
+        // Store backend format "DD-MM-YYYY" in formData
+        dateOfBirth: data.dateOfBirth
+          ? toBackendDate(toCalendarValue(data.dateOfBirth))
+          : "",
         addressLine1: data.addressLine1 || "",
         addressLine2: data.addressLine2 || "",
         city: data.city || "",
@@ -89,16 +94,6 @@ export default function ProfilePage() {
   setSavingProfile(true);
   setProfileMsg(null);
 
-  // Validate DD-MM-YYYY format before sending
-  if (formData.dateOfBirth && !isValidDDMMYYYY(formData.dateOfBirth)) {
-    setProfileMsg({
-      type: "error",
-      text: "Date of Birth must be in DD-MM-YYYY format (e.g., 16-07-1986).",
-    });
-    setSavingProfile(false);
-    return;
-  }
-
   try {
     const updatedUser = await api.auth.updateProfile(formData);
     setUser(updatedUser);
@@ -108,13 +103,12 @@ export default function ProfilePage() {
     }));
     setProfileMsg({ type: "success", text: "Profile updated successfully" });
   } catch (err: unknown) {
-    // Show exact raw backend error (e.g. from Gin binding validation)
     const message = err instanceof Error ? err.message : "An unexpected error occurred";
     setProfileMsg({ type: "error", text: message });
   } finally {
     setSavingProfile(false);
   }
-  };
+};
 
   // 2. Handle Password Change
   const handlePasswordSubmit = async (e: React.FormEvent) => {
@@ -177,20 +171,33 @@ export default function ProfilePage() {
   }
 
   if (!user) return null;
-// Converts "1986-07-26T00:00:00Z" -> "26-07-1986"
-function formatDateForInput(dateStr?: string): string {
+// Convert ISO ("1993-06-27T00:00:00Z") or "27-06-1993" -> "1993-06-27" (for <input type="date">)
+function toCalendarValue(dateStr?: string): string {
   if (!dateStr) return "";
-  // If already DD-MM-YYYY, keep it
-  if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) return dateStr;
+  // If in DD-MM-YYYY format
+  if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) {
+    const [day, month, year] = dateStr.split("-");
+    return `${year}-${month}-${day}`;
+  }
+  // If in ISO format "1993-06-27T..."
+  return dateStr.split("T")[0];
+}
 
-  // Split ISO date "1986-07-26T..." or "1986-07-26"
-  const datePart = dateStr.split("T")[0];
-  const parts = datePart.split("-");
+// Convert native calendar input ("1993-06-27") -> "27-06-1993" (for Go backend)
+function toBackendDate(calendarVal: string): string {
+  if (!calendarVal) return "";
+  const parts = calendarVal.split("-");
   if (parts.length === 3) {
     const [year, month, day] = parts;
     return `${day}-${month}-${year}`;
   }
-  return dateStr;
+  return calendarVal;
+}
+// Convert incoming date to "DD-MM-YYYY" string
+function formatDateForInput(dateStr?: string): string {
+  if (!dateStr) return "";
+  if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) return dateStr;
+  return toBackendDate(toCalendarValue(dateStr));
 }
 
 // Validate DD-MM-YYYY format
@@ -214,13 +221,22 @@ function isValidDDMMYYYY(dateStr: string): boolean {
     <div className="min-h-screen py-10 px-4 sm:px-6">
       <div className="mx-auto max-w-4xl space-y-8">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-            Account & Profile
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Manage your personal identity, contact details, address, and credentials.
-          </p>
-        </div>
+    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+      Account & Profile
+    </h1>
+    <p className="text-sm text-slate-400 mt-1">
+      Manage your personal identity, contact details, address, and credentials.
+    </p>
+  </div>
+
+  {/* Back to Dashboard Button */}
+  <Link
+    href="/dashboard"
+    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-cyan-400/40 px-3.5 py-2 text-xs font-medium text-slate-300 hover:text-white transition-all backdrop-blur-md shadow-sm w-fit"
+  >
+    <ArrowLeft className="h-4 w-4 text-cyan-400" />
+    <span>Back to Dashboard</span>
+  </Link>
 
         {/* Identity & Avatar Card */}
         <div className="liquid-glass rounded-2xl border border-white/10 p-6 flex flex-col sm:flex-row items-center gap-6">
@@ -340,15 +356,20 @@ function isValidDDMMYYYY(dateStr: string): boolean {
                 className="w-full rounded-xl border border-white/10 bg-slate-900/60 px-3.5 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
               />
             </div>
-            <div>
-  <label className="block text-xs font-medium text-slate-400 mb-1.5">Date of Birth</label>
+<div>
+  <label className="block text-xs font-medium text-slate-400 mb-1.5">
+    Date of Birth
+  </label>
   <input
-    type="text"
+    type="date"
     name="dateOfBirth"
-    placeholder="DD-MM-YYYY"
-    value={formData.dateOfBirth}
-    onChange={handleInputChange}
-    className="w-full rounded-xl border border-white/10 bg-slate-900/60 px-3.5 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+    value={toCalendarValue(formData.dateOfBirth)}
+    onChange={(e) => {
+      const selectedCalendarVal = e.target.value;
+      const backendVal = toBackendDate(selectedCalendarVal);
+      setFormData((prev) => ({ ...prev, dateOfBirth: backendVal }));
+    }}
+    className="w-full rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] focus:bg-white/[0.06] backdrop-blur-md px-3.5 py-2 text-sm text-white focus:border-cyan-400/50 focus:outline-none transition-all [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:hover:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:invert"
   />
 </div>
             <div>
