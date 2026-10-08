@@ -1,21 +1,43 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PenSquare, LayoutDashboard, UserCircle, LogOut } from "lucide-react";
 import { GlassButton } from "./GlassButton";
-import { clearTokens, type User } from "@/lib/api";
+import { api, clearTokens, type User } from "@/lib/api";
 
 interface GlassNavbarProps {
   user?: User | null;
 }
 
-export function GlassNavbar({ user }: GlassNavbarProps) {
+export function GlassNavbar({ user: initialUser }: GlassNavbarProps) {
   const pathname = usePathname();
+  const [currentUser, setCurrentUser] = useState<User | null>(initialUser ?? null);
 
-  const handleLogout = () => {
-    clearTokens();
-    window.location.href = "/";
+  // Sync or fetch current user on client mount / route change
+  useEffect(() => {
+    if (initialUser) {
+      setCurrentUser(initialUser);
+      return;
+    }
+
+    api.auth
+      .me()
+      .then((res) => setCurrentUser(res))
+      .catch(() => setCurrentUser(null));
+  }, [initialUser, pathname]);
+
+  const handleLogout = async () => {
+    try {
+      await api.auth.logout();
+    } catch {
+      // ignore network errors on logout
+    } finally {
+      clearTokens();
+      setCurrentUser(null);
+      window.location.href = "/";
+    }
   };
 
   const navLinks = [
@@ -63,40 +85,56 @@ export function GlassNavbar({ user }: GlassNavbarProps) {
         </div>
 
         {/* Action Controls & Auth State */}
-        <div className="flex items-center gap-3">
-          {user ? (
+        <div className="flex items-center gap-2 sm:gap-3">
+          {currentUser ? (
             <>
-              {(user.role === "author" || user.role === "admin") && (
+              {/* Write button only for publisher/admin */}
+              {(currentUser.role === "publisher" || currentUser.role === "admin") && (
                 <Link href="/dashboard/posts/editor">
-                  <GlassButton variant="primary" size="sm">
+                  <GlassButton variant="primary" size="sm" className="flex items-center gap-1.5">
                     <PenSquare className="h-3.5 w-3.5" />
                     <span>Write</span>
                   </GlassButton>
                 </Link>
               )}
 
-              <Link href="/dashboard/posts">
-                <GlassButton variant="ghost" size="sm" title="Dashboard">
+              {/* Dashboard link for all logged-in roles */}
+              <Link href="/dashboard">
+                <GlassButton
+                  variant="ghost"
+                  size="sm"
+                  className={`flex items-center gap-1.5 ${
+                    pathname.startsWith("/dashboard")
+                      ? "text-cyan-300 bg-white/10"
+                      : "text-slate-300"
+                  }`}
+                  title="Dashboard"
+                >
                   <LayoutDashboard className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs font-medium">Dashboard</span>
                 </GlassButton>
               </Link>
 
+              {/* Settings / Profile link */}
               <Link href="/dashboard/settings">
-                <GlassButton variant="ghost" size="sm" title="Profile">
+                <GlassButton variant="ghost" size="sm" title="Profile" className="flex items-center gap-1.5">
                   <UserCircle className="h-4 w-4 text-slate-300" />
-                  <span className="hidden sm:inline text-xs font-normal">
-                    {user.username}
+                  <span className="hidden sm:inline text-xs font-normal text-slate-300">
+                    {currentUser.username}
                   </span>
                 </GlassButton>
               </Link>
 
+              {/* Sign out button */}
               <GlassButton
                 variant="ghost"
                 size="sm"
                 onClick={handleLogout}
                 title="Sign out"
+                className="flex items-center gap-1 text-slate-400 hover:text-rose-400"
               >
-                <LogOut className="h-4 w-4 text-slate-400 hover:text-rose-400" />
+                <LogOut className="h-4 w-4" />
+                <span className="hidden md:inline text-xs">Sign Out</span>
               </GlassButton>
             </>
           ) : (

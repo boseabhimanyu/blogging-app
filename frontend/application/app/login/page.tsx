@@ -33,21 +33,20 @@ const handleSubmit = async (e: React.FormEvent) => {
       password,
     });
 
-    // The user object is already in response.user!
     const user = response.user;
 
-    if (user.role === "admin") {
-      router.push("/dashboard/users");
+    if (user.role === "admin" || user.role === "publisher") {
+      router.push("/dashboard");
     } else {
-      router.push("/dashboard/posts");
+      router.push("/");
     }
+    router.refresh();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Invalid credentials.";
     setError(message);
     setIsLoading(false);
   }
 };
-
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-900/20 via-slate-950 to-slate-950 -z-10 pointer-events-none" />

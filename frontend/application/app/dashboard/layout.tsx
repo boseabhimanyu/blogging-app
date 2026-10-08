@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  LayoutDashboard,
   FileText,
   PenSquare,
   Users,
@@ -20,21 +21,29 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles: Array<"reader" | "author" | "admin">;
+  roles: Array<"admin" | "publisher" | "visitor">;
+  exact?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
   {
+    label: "Overview",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    roles: ["admin", "publisher"],
+    exact: true,
+  },
+  {
     label: "Articles",
     href: "/dashboard/posts",
     icon: FileText,
-    roles: ["author", "admin"],
+    roles: ["publisher", "admin"],
   },
   {
     label: "New Article",
     href: "/dashboard/posts/editor",
     icon: PenSquare,
-    roles: ["author", "admin"],
+    roles: ["publisher", "admin"],
   },
   {
     label: "User Management",
@@ -46,7 +55,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "Account & Profile",
     href: "/dashboard/settings",
     icon: Settings,
-    roles: ["reader", "author", "admin"],
+    roles: ["visitor", "publisher", "admin"],
   },
 ];
 
@@ -65,6 +74,11 @@ export default function DashboardLayout({
     api.auth
       .me()
       .then((currentUser) => {
+        if (currentUser.role === "visitor") {
+          router.replace("/");
+          return;
+        }
+
         setUser(currentUser);
         setLoading(false);
       })
@@ -94,7 +108,6 @@ export default function DashboardLayout({
 
   if (!user) return null;
 
-  // Filter links authorized for current role
   const accessibleLinks = NAV_ITEMS.filter((item) =>
     item.roles.includes(user.role)
   );
@@ -104,6 +117,7 @@ export default function DashboardLayout({
       {/* Liquid Glass Sidebar */}
       <aside className="w-full md:w-64 md:min-h-screen flex-shrink-0 border-b md:border-b-0 md:border-r border-white/10 p-5 flex flex-col justify-between liquid-glass backdrop-blur-2xl">
         <div className="space-y-6">
+          {/* Platform Identity */}
           {/* Platform Identity */}
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2.5 group">
@@ -123,18 +137,14 @@ export default function DashboardLayout({
                 </span>
               </div>
             </Link>
-
-            <Link
-              href="/"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
-              title="Return to Public Site"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
           </div>
 
-          {/* User Profile Capsule */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center gap-3">
+          {/* User Profile Capsule (Clickable -> Account & Profile) */}
+          <Link
+            href="/dashboard/settings"
+            className="rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center gap-3 hover:bg-white/[0.06] hover:border-cyan-500/30 transition-all group"
+            title="Manage Account & Profile"
+          >
             <div className="h-10 w-10 rounded-full border border-white/15 overflow-hidden bg-slate-900 flex-shrink-0 flex items-center justify-center">
               {user.profilePic ? (
                 <img
@@ -150,28 +160,28 @@ export default function DashboardLayout({
             </div>
 
             <div className="overflow-hidden">
-              <p className="text-xs font-semibold text-white truncate">
+              <p className="text-xs font-semibold text-white group-hover:text-cyan-300 transition-colors truncate">
                 {user.name || user.username}
               </p>
               <div className="flex items-center gap-1 mt-0.5">
                 {user.role === "admin" && (
-                  <span className="inline-flex items-center gap-1 rounded bg-rose-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-rose-300">
+                  <span className="inline-flex items-center gap-1 rounded bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300">
                     <ShieldCheck className="h-3 w-3" /> Admin
                   </span>
                 )}
-                {user.role === "author" && (
-                  <span className="inline-flex items-center gap-1 rounded bg-cyan-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-cyan-300">
-                    <Feather className="h-3 w-3" /> Author
+                {user.role === "publisher" && (
+                  <span className="inline-flex items-center gap-1 rounded bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-300">
+                    <Feather className="h-3 w-3" /> Publisher
                   </span>
                 )}
-                {user.role === "reader" && (
-                  <span className="inline-flex items-center gap-1 rounded bg-slate-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-slate-300">
-                    <BookOpen className="h-3 w-3" /> Reader
+                {user.role === "visitor" && (
+                  <span className="inline-flex items-center gap-1 rounded bg-slate-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
+                    <BookOpen className="h-3 w-3" /> Visitor
                   </span>
                 )}
               </div>
             </div>
-          </div>
+          </Link>
 
           {/* Navigation Links */}
           <nav className="space-y-1">
@@ -180,10 +190,9 @@ export default function DashboardLayout({
             </span>
             {accessibleLinks.map((item) => {
               const Icon = item.icon;
-              const isActive =
-                item.href === "/dashboard/posts"
-                  ? pathname === item.href
-                  : pathname.startsWith(item.href);
+              const isActive = item.exact
+                ? pathname === item.href
+                : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
               return (
                 <Link

@@ -5,7 +5,7 @@ const STORAGE_BASE = process.env.NEXT_PUBLIC_STORAGE_URL || "http://localhost:50
 
 // --- Types ---
 
-export type UserRole = "reader" | "author" | "admin";
+export type UserRole = "admin" | "publisher" | "visitor";
 export type PostStatus = "draft" | "published";
 // Add near the top or export section in lib/api.ts:
 export const getAccessToken = (): string | null => null;
@@ -69,6 +69,19 @@ export interface RegisterPayload {
   password: string;
 }
 
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface UserListResponse {
+  users: User[];
+  pagination: Pagination;
+}
+
+
 // --- Storage URL Formatter ---
 
 export const getAssetUrl = (path?: string): string => {
@@ -99,6 +112,8 @@ apiClient.interceptors.response.use(
       originalRequest?.url?.includes("/auth/register") ||
       originalRequest?.url?.includes("/auth/refresh");
 
+    const isSessionCheck = originalRequest?.url?.includes("/auth/me");
+
     // If 401 on an authenticated endpoint, attempt cookie-based refresh
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute && typeof window !== "undefined") {
       originalRequest._retry = true;
@@ -107,13 +122,17 @@ apiClient.interceptors.response.use(
         await axios.post(
           `${API_BASE}/auth/refresh`,
           {},
-          { withCredentials: true } // Refresh cookie is automatically sent
+          { withCredentials: true }
         );
         // Retry original request with newly rotated cookie
         return apiClient(originalRequest);
       } catch (refreshErr) {
-        // Redirect to login if refresh fails
-        if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
+        // Only kick to /login if:
+        // 1. The user is currently inside /dashboard, OR
+        // 2. It was a protected action, NOT a silent background /auth/me check
+        const isDashboardRoute = window.location.pathname.startsWith("/dashboard");
+
+        if (isDashboardRoute && !window.location.pathname.includes("/login")) {
           window.location.href = "/login";
         }
       }
@@ -180,7 +199,23 @@ export const api = {
   },
 
   posts: {
-    list: async (params?: { page?: number; limit?: number; category?: string; tag?: string }) => {
+    list: async (params?: {
+  page?: number;
+  limit?: number;
+  category?: string;
+  tag?: string;
+  status?: string;
+  search?: string;
+}): Promise<{
+  posts: Post[];
+  total?: number;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}> => {
       const { data } = await apiClient.get<{ posts: Post[]; total: number }>("/posts", {
         params,
       });
@@ -218,10 +253,14 @@ export const api = {
   },
 
   admin: {
-    listUsers: async (params?: { page?: number; limit?: number }) => {
-      const { data } = await apiClient.get<{ users: User[]; total: number }>("/users", {
-        params,
-      });
+    listUsers: async (params?: {
+      role?: UserRole;
+      status?: boolean | string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    }): Promise<UserListResponse> => {
+      const { data } = await apiClient.get<UserListResponse>("/users", { params });
       return data;
     },
 
