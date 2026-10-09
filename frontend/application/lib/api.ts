@@ -20,7 +20,7 @@ export interface User {
   email: string;
   altEmail?: string;
   phone?: string;
-  role: "admin" | "publisher" | "visitor";
+  role: UserRole;
   profilePic?: string;
   status: boolean;
   createdAt: string;
@@ -70,12 +70,6 @@ export interface Post {
   updatedAt: string;
 }
 
-export interface Category {
-  name: string;
-  slug: string;
-  description?: string;
-}
-
 export interface AuthResponse {
   message: string;
   user: User;
@@ -107,15 +101,6 @@ export interface UserListResponse {
   users: User[];
   pagination: Pagination;
 }
-
-// --- Storage URL Formatter ---
-
-export const getAssetUrl = (path?: string): string => {
-  if (!path) return "";
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
-  return `${STORAGE_BASE}/${cleanPath}`;
-};
 
 export interface CreateUserPayload {
   firstName: string;
@@ -150,6 +135,35 @@ export interface AppSettings {
   updatedAt: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCategoryPayload {
+  name: string;
+  description?: string;
+}
+
+export interface UpdateCategoryPayload {
+  name: string;
+  slug?: string;
+  description?: string;
+}
+
+// --- Storage URL Formatter ---
+
+export const getAssetUrl = (path?: string): string => {
+  if (!path) return "";
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+  return `${STORAGE_BASE}/${cleanPath}`;
+};
+
 // --- Axios Instance Setup ---
 
 const apiClient = axios.create({
@@ -171,7 +185,6 @@ apiClient.interceptors.response.use(
       originalRequest?.url?.includes("/auth/register") ||
       originalRequest?.url?.includes("/auth/refresh");
 
-    // If 401 on an authenticated endpoint, attempt cookie-based refresh
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute && typeof window !== "undefined") {
       originalRequest._retry = true;
 
@@ -291,9 +304,16 @@ export const api = {
   },
 
   categories: {
-    list: async () => {
-      const { data } = await apiClient.get<Category[]>("/categories");
-      return data;
+    list: async (): Promise<Category[]> => {
+      const { data } = await apiClient.get<{ data: Category[] }>("/categories");
+      return data.data;
+    },
+
+    getBySlug: async (slug: string): Promise<Category> => {
+      const { data } = await apiClient.get<{ data: Category }>(
+        `/categories/${encodeURIComponent(slug)}`
+      );
+      return data.data;
     },
   },
 
@@ -332,7 +352,6 @@ export const api = {
       return data.user;
     },
 
-    // ➕ Add these 3 methods below:
     updateUserStatus: async (id: string, status: boolean): Promise<{ message: string; status: boolean }> => {
       const { data } = await apiClient.patch<{ message: string; status: boolean }>(
         `/users/${id}/status`,
@@ -356,10 +375,9 @@ export const api = {
       );
       return data;
     },
-  getSettings: async (): Promise<AppSettings> => {
-      const { data } = await apiClient.get<{ data: AppSettings }>(
-        "/settings"
-      );
+
+    getSettings: async (): Promise<AppSettings> => {
+      const { data } = await apiClient.get<{ data: AppSettings }>("/settings");
       return data.data;
     },
 
@@ -369,6 +387,45 @@ export const api = {
         { allowRegistration }
       );
       return data.data;
+    },
+
+    // Category Management
+    getCategories: async (): Promise<Category[]> => {
+      const { data } = await apiClient.get<{ data: Category[] }>("/categories");
+      return data.data;
+    },
+
+    getCategoryById: async (id: string): Promise<Category> => {
+      const { data } = await apiClient.get<{ data: Category }>(
+        `/admin/categories/${id}`
+      );
+      return data.data;
+    },
+
+    createCategory: async (payload: CreateCategoryPayload): Promise<Category> => {
+      const { data } = await apiClient.post<{ data: Category }>(
+        "/admin/categories",
+        payload
+      );
+      return data.data;
+    },
+
+    updateCategory: async (
+      id: string,
+      payload: UpdateCategoryPayload
+    ): Promise<Category> => {
+      const { data } = await apiClient.patch<{ data: Category }>(
+        `/admin/categories/${id}`,
+        payload
+      );
+      return data.data;
+    },
+
+    deleteCategory: async (id: string): Promise<{ message: string }> => {
+      const { data } = await apiClient.delete<{ message: string }>(
+        `/admin/categories/${id}`
+      );
+      return data;
     },
   },
 };

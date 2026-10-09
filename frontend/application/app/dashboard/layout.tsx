@@ -63,6 +63,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: Settings,
     roles: ["admin"], // only admins should access app settings
   },
+   {
+    label: "Catgories",
+    href: "/dashboard/categories",
+    icon: PenSquare,
+    roles: ["admin"], // only admins should access app settings
+  },
 ];
 
 export default function DashboardLayout({
