@@ -1,274 +1,489 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
+import { api, type Post, type Category, type User } from "@/lib/api";
 import {
-  FileText,
-  Plus,
   Search,
-  Clock,
-  Calendar,
-  ExternalLink,
-  Edit3,
+  Plus,
   Trash2,
+  Edit,
+  ExternalLink,
+  Loader2,
   AlertCircle,
-  Sparkles,
+  FileText,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  ShieldCheck,
+  User as UserIcon,
+  RefreshCw,
 } from "lucide-react";
-import { GlassButton } from "@/components/ui/GlassButton";
-import { api, type Post, type PostStatus } from "@/lib/api";
 
-export default function AuthorPostsPage() {
+export default function DashboardPostsPage() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [posts, setPosts] = useState<Post[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [authorMap, setAuthorMap] = useState<Record<string, User>>({});
+
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filter & Search states
-  const [statusFilter, setStatusFilter] = useState<"all" | PostStatus>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  // Filters
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [selectedAuthorId, setSelectedAuthorId] = useState<string>("all");
 
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Ref to prevent duplicate background author network requests
+  const fetchedAuthorIdsRef = useRef<Set<string>>(new Set());
+
+  // 1. Initial auth & category resolution
   useEffect(() => {
-    fetchPosts();
+    async function init() {
+      setAuthLoading(true);
+      try {
+        const [me, catRes] = await Promise.all([
+          api.auth.me(),
+          api.categories.list().catch(() => []),
+        ]);
+        setCurrentUser(me);
+        setCategories(catRes);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to authenticate session");
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+    init();
   }, []);
 
-  const fetchPosts = async () => {
+  // 2. Fetch posts based strictly on user role
+  const fetchPosts = useCallback(async () => {
+    if (!currentUser) return;
+
+    setLoading(true);
+    setError(null);
+
     try {
-      setIsLoading(true);
-      setError(null);
-      const data = await api.posts.list({ limit: 50 });
-      setPosts(data.posts || []);
+      const params: Record<string, any> = { limit: 100 };
+      if (statusFilter !== "all") params.status = statusFilter;
+
+      let res;
+      if (currentUser.role === "admin") {
+        if (selectedAuthorId === "me") {
+          // Hits /api/v1/posts/me (or adminList with current user id)
+          res = await api.posts.myPosts(params);
+        } else {
+          if (selectedAuthorId !== "all") {
+            params.authorId = selectedAuthorId;
+          }
+          res = await api.posts.adminList(params);
+        }
+      } else {
+        res = await api.posts.myPosts(params);
+      }
+
+      const postList = res.data || [];
+      setPosts(postList);
+
+      // 3. For admins, resolve missing author details in the background without causing re-renders
+      if (currentUser.role === "admin") {
+        const uniqueAuthorIds = Array.from(
+          new Set(postList.map((p) => p.authorId).filter(Boolean))
+        );
+
+        const idsToFetch = uniqueAuthorIds.filter(
+          (id) => !fetchedAuthorIdsRef.current.has(id)
+        );
+
+        if (idsToFetch.length > 0) {
+          // Mark immediately as in-flight
+          idsToFetch.forEach((id) => fetchedAuthorIdsRef.current.add(id));
+
+          Promise.allSettled(idsToFetch.map((id) => api.admin.getUser(id))).then(
+            (results) => {
+              const newMap: Record<string, User> = {};
+              results.forEach((result, idx) => {
+                if (result.status === "fulfilled" && result.value) {
+                  newMap[idsToFetch[idx]] = result.value;
+                }
+              });
+
+              if (Object.keys(newMap).length > 0) {
+                setAuthorMap((prev) => ({ ...prev, ...newMap }));
+              }
+            }
+          );
+        }
+      }
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to load articles.";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Failed to load posts");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
+  }, [currentUser, statusFilter, selectedAuthorId]); // Stable: authorMap is NOT in the dependencies
+
+  useEffect(() => {
+    if (!authLoading && currentUser) {
+      fetchPosts();
+    }
+  }, [authLoading, currentUser, fetchPosts]);
+
+  const isAdmin = currentUser?.role === "admin";
+
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, string>();
+    categories.forEach((cat) => map.set(cat.id, cat.name));
+    return map;
+  }, [categories]);
+
+  // Client-side text & category filters
+  const filteredPosts = useMemo(() => {
+    return posts.filter((post) => {
+      const matchesCategory =
+        categoryFilter === "all" || post.categoryIds?.includes(categoryFilter);
+      const q = search.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        post.title.toLowerCase().includes(q) ||
+        post.slug.toLowerCase().includes(q);
+
+      return matchesCategory && matchesSearch;
+    });
+  }, [posts, categoryFilter, search]);
 
   const handleDelete = async (slug: string) => {
-    if (!confirm("Are you sure you want to permanently delete this article?")) {
-      return;
-    }
-
-    setIsDeleting(slug);
+    if (!window.confirm("Are you sure you want to delete this article?")) return;
+    setActionLoading(slug);
     try {
       await api.posts.delete(slug);
       setPosts((prev) => prev.filter((p) => p.slug !== slug));
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to delete article.");
+      alert(err instanceof Error ? err.message : "Failed to delete article");
     } finally {
-      setIsDeleting(null);
+      setActionLoading(null);
     }
   };
 
-  const filteredPosts = useMemo(() => {
-    return posts.filter((post) => {
-      const matchesStatus =
-        statusFilter === "all" ? true : post.status === statusFilter;
-      const matchesSearch =
-        searchQuery === "" ||
-        post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        post.summary?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesStatus && matchesSearch;
-    });
-  }, [posts, statusFilter, searchQuery]);
+  const handleToggleStatus = async (post: Post) => {
+    const nextStatus = post.status === "published" ? "draft" : "published";
+    setActionLoading(post.slug);
+    try {
+      await api.posts.update(post.slug, {
+        status: nextStatus,
+        publishedAt: nextStatus === "published" ? new Date().toISOString() : null,
+      });
+      setPosts((prev) =>
+        prev.map((p) => (p.slug === post.slug ? { ...p, status: nextStatus } : p))
+      );
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to update status");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
-  // Derived stats
-  const stats = useMemo(() => {
-    const published = posts.filter((p) => p.status === "published").length;
-    const drafts = posts.filter((p) => p.status === "draft").length;
-    return { total: posts.length, published, drafts };
-  }, [posts]);
+  if (authLoading) {
+    return (
+      <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-2">
+        <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
+        <span className="text-xs">Authenticating...</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Header with Title and Create Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6 max-w-6xl mx-auto pb-16">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <FileText className="h-6 w-6 text-cyan-400" />
-            <span>My Articles</span>
-          </h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Manage your written stories, revise drafts, and launch new publications.
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-white">
+              Articles & Dispatches
+            </h1>
+            {isAdmin ? (
+              <span className="inline-flex items-center gap-1 rounded-md bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 text-[11px] font-medium text-cyan-300">
+                <ShieldCheck className="h-3 w-3" />
+                <span>Admin View</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-md bg-white/5 border border-white/10 px-2 py-0.5 text-[11px] font-medium text-slate-300">
+                <UserIcon className="h-3 w-3" />
+                <span>Author Workspace</span>
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            {isAdmin
+              ? "Overseeing platform dispatches across all authors."
+              : "Managing your authored publications and drafts."}
           </p>
         </div>
 
-        <Link href="/dashboard/posts/editor">
-          <GlassButton variant="primary" size="md" className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => fetchPosts()}
+            className="p-2.5 rounded-xl border border-white/10 bg-slate-900/60 text-slate-400 hover:text-white transition-colors"
+            title="Refresh list"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+
+          <Link
+            href="/dashboard/posts/editor"
+            className="inline-flex items-center gap-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400/50 transition-all shadow-[0_0_15px_rgba(6,182,212,0.1)]"
+          >
             <Plus className="h-4 w-4" />
-            <span>Create Article</span>
-          </GlassButton>
-        </Link>
-      </div>
-
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-2xl liquid-glass p-5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Total Stories
-          </span>
-          <div className="mt-2 text-3xl font-extrabold text-white">
-            {stats.total}
-          </div>
-        </div>
-
-        <div className="rounded-2xl liquid-glass p-5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-            Published Live
-          </span>
-          <div className="mt-2 text-3xl font-extrabold text-emerald-300">
-            {stats.published}
-          </div>
-        </div>
-
-        <div className="rounded-2xl liquid-glass p-5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">
-            Drafts in Progress
-          </span>
-          <div className="mt-2 text-3xl font-extrabold text-amber-300">
-            {stats.drafts}
-          </div>
+            <span>New Article</span>
+          </Link>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
-        {/* Status Pill Filters */}
-        <div className="inline-flex rounded-xl p-1 liquid-glass-inset gap-1">
-          {(["all", "published", "draft"] as const).map((status) => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={`px-4 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
-                statusFilter === status
-                  ? "bg-cyan-500/20 text-cyan-300 shadow-sm border border-cyan-400/30"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              {status === "all" ? "All Posts" : `${status}s`}
-            </button>
-          ))}
-        </div>
-
-        {/* Search Input */}
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+      {/* Filter Row */}
+      <div className={`grid grid-cols-1 gap-3 ${isAdmin ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
           <input
             type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search articles..."
-            className="w-full rounded-xl liquid-glass-inset py-2 pl-10 pr-4 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-400/50"
+            placeholder="Search title or slug..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-slate-900/60 pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
           />
         </div>
+
+        {/* Admin Author Selector with 'My Articles' */}
+        {isAdmin && (
+          <div className="relative">
+            <select
+              value={selectedAuthorId}
+              onChange={(e) => setSelectedAuthorId(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-xs text-slate-300 focus:border-cyan-500 focus:outline-none"
+            >
+              <option value="all">All Authors</option>
+              <option value="me" className="text-cyan-400 font-semibold">
+                ★ My Articles Only
+              </option>
+              <optgroup label="Filter By Specific Author">
+                {Object.values(authorMap)
+                  .filter((author) => author.id !== currentUser.id)
+                  .map((author) => {
+                    const name =
+                      `${author.firstName} ${author.lastName}`.trim() || author.username;
+                    return (
+                      <option key={author.id} value={author.id}>
+                        {name} ({author.role})
+                      </option>
+                    );
+                  })}
+              </optgroup>
+            </select>
+          </div>
+        )}
+
+        {/* Status Filter */}
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-xs text-slate-300 focus:border-cyan-500 focus:outline-none"
+        >
+          <option value="all">All Statuses</option>
+          <option value="published">Published</option>
+          <option value="draft">Draft</option>
+        </select>
+
+        {/* Category Filter */}
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-xs text-slate-300 focus:border-cyan-500 focus:outline-none"
+        >
+          <option value="all">All Categories</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Content Section */}
-      {isLoading ? (
-        <div className="rounded-3xl liquid-glass p-12 text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-cyan-400 border-t-transparent" />
-          <p className="mt-4 text-sm text-slate-400">Loading your articles...</p>
-        </div>
-      ) : error ? (
-        <div className="rounded-2xl border border-rose-500/30 bg-rose-950/40 p-4 text-sm text-rose-300 flex items-center gap-3">
-          <AlertCircle className="h-5 w-5 text-rose-400 shrink-0" />
+      {error && (
+        <div className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3.5 text-xs text-rose-300">
+          <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
-      ) : filteredPosts.length === 0 ? (
-        <div className="rounded-3xl liquid-glass p-12 text-center max-w-lg mx-auto">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-500/10 border border-cyan-400/20 text-cyan-300">
-            <Sparkles className="h-6 w-6" />
-          </div>
-          <h3 className="text-lg font-semibold text-white">No articles found</h3>
-          <p className="mt-1.5 text-xs text-slate-400">
-            {searchQuery || statusFilter !== "all"
-              ? "Try adjusting your filter or search criteria."
-              : "You haven't written any stories yet. Start drafting your first article today."}
-          </p>
-          <div className="mt-6">
-            <Link href="/dashboard/posts/editor">
-              <GlassButton variant="primary" size="sm">
-                Create First Article
-              </GlassButton>
-            </Link>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredPosts.map((post) => (
-            <div
-              key={post.slug}
-              className="rounded-2xl liquid-glass p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:border-cyan-500/30 group"
-            >
-              <div className="space-y-1.5 max-w-2xl">
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-                      post.status === "published"
-                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                        : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                    }`}
-                  >
-                    {post.status}
-                  </span>
-
-                  <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {new Date(post.createdAt).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </span>
-                </div>
-
-                <h2 className="text-base font-bold text-slate-100 group-hover:text-cyan-300 transition-colors">
-                  {post.title}
-                </h2>
-
-                {post.summary && (
-                  <p className="text-xs text-slate-400 line-clamp-1">
-                    {post.summary}
-                  </p>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-                {post.status === "published" && (
-                  <Link
-                    href={`/posts/${post.slug}`}
-                    target="_blank"
-                    className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
-                    title="View Live Article"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Link>
-                )}
-
-                <Link
-                  href={`/dashboard/posts/editor?slug=${encodeURIComponent(post.slug)}`}
-                  className="p-2 rounded-xl text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors"
-                  title="Edit Article"
-                >
-                  <Edit3 className="h-4 w-4" />
-                </Link>
-
-                <button
-                  onClick={() => handleDelete(post.slug)}
-                  disabled={isDeleting === post.slug}
-                  className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
-                  title="Delete Article"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
       )}
+
+      {/* Table Container */}
+      <div className="rounded-2xl border border-white/10 bg-slate-950/60 backdrop-blur-md overflow-hidden">
+        {loading ? (
+          <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-2">
+            <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
+            <span className="text-xs">Loading articles...</span>
+          </div>
+        ) : filteredPosts.length === 0 ? (
+          <div className="py-16 text-center space-y-2">
+            <FileText className="h-8 w-8 text-slate-600 mx-auto" />
+            <p className="text-sm font-medium text-white">No articles found</p>
+            <p className="text-xs text-slate-500">
+              {search || statusFilter !== "all" || categoryFilter !== "all" || selectedAuthorId !== "all"
+                ? "No matching articles for your selected filters."
+                : "No articles are available in this view."}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-white/[0.02] border-b border-white/10 text-slate-400 uppercase tracking-wider font-semibold">
+                <tr>
+                  <th className="px-5 py-3">Article</th>
+                  {isAdmin && <th className="px-5 py-3">Author</th>}
+                  <th className="px-5 py-3">Categories</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Date</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-slate-300">
+                {filteredPosts.map((post) => {
+                  const isBusy = actionLoading === post.slug;
+                  const author = post.authorId ? authorMap[post.authorId] : null;
+                  const authorDisplayName = author
+                    ? `${author.firstName} ${author.lastName}`.trim() || author.username
+                    : post.authorId
+                    ? `${post.authorId.slice(0, 8)}...`
+                    : "—";
+
+                  return (
+                    <tr key={post.id || post.slug} className="hover:bg-white/[0.02] transition-colors">
+                      {/* Title & Slug */}
+                      <td className="px-5 py-4 max-w-xs">
+                        <div className="font-semibold text-white line-clamp-1">{post.title}</div>
+                        <div className="font-mono text-[11px] text-slate-500">/{post.slug}</div>
+                      </td>
+
+                      {/* Author Column (Admin View) */}
+                      {isAdmin && (
+                        <td className="px-5 py-4">
+                          {post.authorId ? (
+                            <button
+                              onClick={() => setSelectedAuthorId(post.authorId)}
+                              className="group inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-cyan-300 transition-colors"
+                              title={`Filter by author: ${authorDisplayName}`}
+                            >
+                              <UserIcon className="h-3 w-3 text-slate-500 group-hover:text-cyan-400 transition-colors" />
+                              <span className="font-medium">{authorDisplayName}</span>
+                              {author?.role && (
+                                <span className="rounded bg-white/5 border border-white/10 px-1.5 py-0.5 text-[9px] text-slate-400 uppercase tracking-wider">
+                                  {author.role}
+                                </span>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Categories */}
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {post.categoryIds && post.categoryIds.length > 0 ? (
+                            post.categoryIds.map((cid) => (
+                              <span
+                                key={cid}
+                                className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5 text-[10px] text-slate-300"
+                              >
+                                {categoryMap.get(cid) || "Category"}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[10px] text-slate-600">—</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Status Toggle Badge */}
+                      <td className="px-5 py-4">
+                        <button
+                          onClick={() => handleToggleStatus(post)}
+                          disabled={isBusy}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all ${
+                            post.status === "published"
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20"
+                              : "bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20"
+                          }`}
+                          title="Click to toggle status"
+                        >
+                          {post.status === "published" ? (
+                            <CheckCircle2 className="h-3 w-3" />
+                          ) : (
+                            <Clock className="h-3 w-3" />
+                          )}
+                          <span className="capitalize">{post.status}</span>
+                        </button>
+                      </td>
+
+                      {/* Date */}
+                      <td className="px-5 py-4 text-slate-400 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3 w-3 text-slate-500" />
+                          <span>
+                            {new Date(post.publishedAt || post.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {post.status === "published" && (
+                            <Link
+                              href={`/posts/${encodeURIComponent(post.slug)}`}
+                              target="_blank"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                              title="View Public Post"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Link>
+                          )}
+
+                          <Link
+                            href={`/dashboard/posts/editor?slug=${encodeURIComponent(post.slug)}`}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                            title="Edit Post"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                          </Link>
+
+                          <button
+                            onClick={() => handleDelete(post.slug)}
+                            disabled={isBusy}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                            title="Delete Post"
+                          >
+                            {isBusy ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

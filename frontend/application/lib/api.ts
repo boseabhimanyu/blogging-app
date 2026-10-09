@@ -80,6 +80,7 @@ export interface Post {
   createdAt: string;
   updatedAt: string;
 }
+
 export interface PostListResponse {
   data: Post[];
   total: number;
@@ -170,13 +171,6 @@ export interface UpdateCategoryPayload {
   name: string;
   slug?: string;
   description?: string;
-}
-
-export interface PostListResponse {
-  data: Post[];
-  total: number;
-  page: number;
-  limit: number;
 }
 
 // --- Storage URL Formatter ---
@@ -281,6 +275,7 @@ export const api = {
   },
 
   posts: {
+    // 1. Public listing
     list: async (params?: {
       page?: number;
       limit?: number;
@@ -288,18 +283,33 @@ export const api = {
       tag?: string;
       status?: string;
       search?: string;
-    }): Promise<{
-      data: Post[];
-      page: number;
-      limit: number;
-      total: number;
-    }> => {
-      const { data } = await apiClient.get<{
-        data: Post[];
-        page: number;
-        limit: number;
-        total: number;
-      }>("/posts", { params });
+      [key: string]: any;
+    }): Promise<PostListResponse> => {
+      const { data } = await apiClient.get<PostListResponse>("/posts", { params });
+      return data;
+    },
+
+    // 2. Author's personal posts (GET /api/v1/posts/me)
+    myPosts: async (params?: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      [key: string]: any;
+    }): Promise<PostListResponse> => {
+      const { data } = await apiClient.get<PostListResponse>("/posts/me", { params });
+      return data;
+    },
+
+    // 3. Admin platform-wide oversight (GET /api/v1/admin/posts)
+    adminList: async (params?: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      authorId?: string;
+      categoryId?: string;
+      [key: string]: any;
+    }): Promise<PostListResponse> => {
+      const { data } = await apiClient.get<PostListResponse>("/admin/posts", { params });
       return data;
     },
 
@@ -310,7 +320,7 @@ export const api = {
       return data.data;
     },
 
-    create: async (payload: Partial<Post>): Promise<Post> => {
+    create: async (payload: CreatePostPayload | Partial<Post>): Promise<Post> => {
       const { data } = await apiClient.post<{ data: Post }>("/posts", payload);
       return data.data;
     },
