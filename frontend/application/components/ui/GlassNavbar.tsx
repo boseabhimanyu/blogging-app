@@ -41,14 +41,14 @@ export function GlassNavbar({ user: initialUser }: GlassNavbarProps) {
   };
 
   const navLinks = [
-    { label: "Feed", href: "/" },
     { label: "Categories", href: "/categories" },
+    { label: "Articles", href: "/posts" },
   ];
 
   return (
     <header className="sticky top-4 z-40 mx-auto w-[calc(100%-2rem)] max-w-6xl">
       <nav className="flex items-center justify-between rounded-2xl px-5 py-3 liquid-glass-elevated">
-        {/* Brand Logo */}
+        {/* Brand Logo & Public Nav */}
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2 group">
             <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-500 p-[1px]">
@@ -66,15 +66,17 @@ export function GlassNavbar({ user: initialUser }: GlassNavbarProps) {
           {/* Navigation Links */}
           <div className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => {
-              const isActive = pathname === link.href;
+              const isActive =
+                pathname === link.href ||
+                (link.href === "/categories" && pathname.startsWith("/category"));
               return (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
                     isActive
-                      ? "text-cyan-300 bg-white/10 shadow-sm"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                      ? "text-cyan-300 bg-white/10 shadow-sm border border-white/10"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent"
                   }`}
                 >
                   {link.label}
@@ -116,14 +118,19 @@ export function GlassNavbar({ user: initialUser }: GlassNavbarProps) {
               </Link>
 
               {/* Settings / Profile link */}
-                <Link href="/dashboard/settings">
-  <GlassButton variant="ghost" size="sm" title="Profile" className="flex items-center gap-1.5">
-    <UserCircle className="h-4 w-4 text-slate-300" />
-    <span className="hidden sm:inline text-xs font-normal text-slate-300">
-      {currentUser.username}
-    </span>
-  </GlassButton>
-</Link>
+              <Link href="/dashboard/settings">
+                <GlassButton
+                  variant="ghost"
+                  size="sm"
+                  title="Profile"
+                  className="flex items-center gap-1.5"
+                >
+                  <UserCircle className="h-4 w-4 text-slate-300" />
+                  <span className="hidden sm:inline text-xs font-normal text-slate-300">
+                    {currentUser.username}
+                  </span>
+                </GlassButton>
+              </Link>
 
               {/* Sign out button */}
               <GlassButton

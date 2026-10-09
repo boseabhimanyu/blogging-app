@@ -153,7 +153,7 @@ export default function DashboardLayout({
 
           {/* User Profile Capsule (Clickable -> Account & Profile) */}
           <Link
-  href="/dashboard/settings"
+  href="/dashboard/profile"
   className="rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center gap-3 hover:bg-white/[0.06] hover:border-cyan-500/30 transition-all group"
   title="Manage Account & Profile"
 >

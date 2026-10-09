@@ -12,6 +12,17 @@ export const getAccessToken = (): string | null => null;
 export const setTokens = (_accessToken?: string, _refreshToken?: string) => {};
 export const clearTokens = () => {};
 
+export interface CreatePostPayload {
+  title: string;
+  slug?: string;
+  summary?: string;
+  content: string;
+  coverImage?: string;
+  categoryIds?: string[];
+  tagIds?: string[];
+  status: "draft" | "published";
+}
+
 export interface User {
   id: string;
   firstName: string;
@@ -55,19 +66,25 @@ export interface ChangePasswordPayload {
 }
 
 export interface Post {
-  id?: string;
+  id: string;
   title: string;
   slug: string;
   summary: string;
   content: string;
   coverImage?: string;
-  authorUsername?: string;
-  categorySlugs: string[];
-  tagSlugs: string[];
+  authorId: string;
+  categoryIds: string[];
+  tagIds: string[];
   status: PostStatus;
   publishedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+export interface PostListResponse {
+  data: Post[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export interface AuthResponse {
@@ -153,6 +170,13 @@ export interface UpdateCategoryPayload {
   name: string;
   slug?: string;
   description?: string;
+}
+
+export interface PostListResponse {
+  data: Post[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 // --- Storage URL Formatter ---
@@ -265,37 +289,41 @@ export const api = {
       status?: string;
       search?: string;
     }): Promise<{
-      posts: Post[];
-      total?: number;
-      pagination?: {
+      data: Post[];
+      page: number;
+      limit: number;
+      total: number;
+    }> => {
+      const { data } = await apiClient.get<{
+        data: Post[];
         page: number;
         limit: number;
         total: number;
-        totalPages: number;
-      };
-    }> => {
-      const { data } = await apiClient.get<{ posts: Post[]; total: number }>("/posts", {
-        params,
-      });
+      }>("/posts", { params });
       return data;
     },
 
-    getBySlug: async (slug: string) => {
-      const { data } = await apiClient.get<Post>(`/posts/${encodeURIComponent(slug)}`);
-      return data;
+    getBySlug: async (slug: string): Promise<Post> => {
+      const { data } = await apiClient.get<{ data: Post }>(
+        `/posts/${encodeURIComponent(slug)}`
+      );
+      return data.data;
     },
 
-    create: async (payload: any) => {
-      const { data } = await apiClient.post<Post>("/posts", payload);
-      return data;
+    create: async (payload: Partial<Post>): Promise<Post> => {
+      const { data } = await apiClient.post<{ data: Post }>("/posts", payload);
+      return data.data;
     },
 
-    update: async (slug: string, payload: any) => {
-      const { data } = await apiClient.patch<Post>(`/posts/${encodeURIComponent(slug)}`, payload);
-      return data;
+    update: async (slug: string, payload: Partial<Post>): Promise<Post> => {
+      const { data } = await apiClient.patch<{ data: Post }>(
+        `/posts/${encodeURIComponent(slug)}`,
+        payload
+      );
+      return data.data;
     },
 
-    delete: async (slug: string) => {
+    delete: async (slug: string): Promise<{ message: string }> => {
       const { data } = await apiClient.delete<{ message: string }>(
         `/posts/${encodeURIComponent(slug)}`
       );

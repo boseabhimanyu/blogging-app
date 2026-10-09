@@ -1,18 +1,26 @@
+"use client";
+
 import Link from "next/link";
 import { Calendar, User, ArrowUpRight } from "lucide-react";
 import { getAssetUrl, type Post } from "@/lib/api";
 
 interface LiquidPostCardProps {
-  post: Post;
+  post: Post & {
+    authorUsername?: string;
+    categorySlugs?: string[];
+  };
   featured?: boolean;
 }
 
 export function LiquidPostCard({ post, featured = false }: LiquidPostCardProps) {
-  const formattedDate = new Date(post.createdAt).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const displayDate = post.publishedAt || post.createdAt;
+  const formattedDate = displayDate
+    ? new Date(displayDate).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "";
 
   return (
     <article
@@ -25,7 +33,7 @@ export function LiquidPostCard({ post, featured = false }: LiquidPostCardProps) 
 
       {/* 16:9 Cover Image Container */}
       <Link
-        href={`/posts/${post.slug}`}
+        href={`/posts/${encodeURIComponent(post.slug)}`}
         className={`block overflow-hidden rounded-xl border border-white/10 bg-slate-900/50 aspect-[16/9] ${
           featured ? "mb-0 h-full w-full" : "mb-4 w-full"
         }`}
@@ -47,13 +55,13 @@ export function LiquidPostCard({ post, featured = false }: LiquidPostCardProps) 
       {/* Content Column */}
       <div className="flex flex-1 flex-col justify-between">
         <div>
-          {/* Categories Pill List */}
+          {/* Categories Pill List (if present) */}
           {post.categorySlugs && post.categorySlugs.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
-              {post.categorySlugs.map((categorySlug) => (
+              {post.categorySlugs.map((categorySlug: string) => (
                 <Link
                   key={categorySlug}
-                  href={`/categories/${categorySlug}`}
+                  href={`/category/${encodeURIComponent(categorySlug)}`}
                   className="rounded-md border border-cyan-500/20 bg-cyan-950/40 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-cyan-400 backdrop-blur-md transition-colors hover:border-cyan-400/50 hover:text-cyan-300"
                 >
                   #{categorySlug}
@@ -63,7 +71,7 @@ export function LiquidPostCard({ post, featured = false }: LiquidPostCardProps) 
           )}
 
           {/* Title with Arrow Icon */}
-          <Link href={`/posts/${post.slug}`} className="block">
+          <Link href={`/posts/${encodeURIComponent(post.slug)}`} className="block">
             <h3
               className={`font-semibold tracking-tight text-white transition-colors group-hover:text-cyan-200 ${
                 featured ? "text-xl md:text-2xl" : "text-lg line-clamp-2"
@@ -75,9 +83,9 @@ export function LiquidPostCard({ post, featured = false }: LiquidPostCardProps) 
           </Link>
 
           {/* Excerpt / Summary */}
-          {post.summary && (
+          {(post.summary || post.content) && (
             <p className="mt-2 text-sm leading-relaxed text-slate-400 line-clamp-2">
-              {post.summary}
+              {post.summary || post.content.slice(0, 140)}
             </p>
           )}
         </div>
@@ -86,22 +94,17 @@ export function LiquidPostCard({ post, featured = false }: LiquidPostCardProps) 
         <div className="mt-5 flex items-center justify-between border-t border-white/5 pt-3 text-xs text-slate-500">
           <div className="flex items-center gap-1.5">
             <User className="h-3.5 w-3.5 text-slate-400" />
-            {post.authorUsername ? (
-              <Link
-                href={`/authors/${post.authorUsername}`}
-                className="hover:text-slate-300 transition-colors"
-              >
-                {post.authorUsername}
-              </Link>
-            ) : (
-              <span>Author</span>
-            )}
+            <span>
+              {post.authorUsername ? `@${post.authorUsername}` : "Author"}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <Calendar className="h-3.5 w-3.5" />
-            <time>{formattedDate}</time>
-          </div>
+          {formattedDate && (
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5" />
+              <time>{formattedDate}</time>
+            </div>
+          )}
         </div>
       </div>
     </article>

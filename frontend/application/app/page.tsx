@@ -1,33 +1,28 @@
 import Link from "next/link";
-import { GlassNavbar } from "@/components/ui/GlassNavbar";
-import { LiquidPostCard } from "@/components/ui/LiquidPostCard";
-import { api, getAssetUrl, type Post } from "@/lib/api";
-import { Sparkles, PenLine, ArrowRight } from "lucide-react";
 
-async function getInitialPosts(): Promise<{ posts: Post[] }> {
+import { api, getAssetUrl, type Post } from "@/lib/api";
+import { Sparkles, Calendar, ArrowRight, FolderTree } from "lucide-react";
+
+async function getInitialPosts(): Promise<Post[]> {
   try {
-    const res = await api.posts.list({ page: 1, limit: 10 });
-    // Normalize response whether backend returns raw array or { posts: [] }
-    if (Array.isArray(res)) {
-      return { posts: res };
-    }
-    return { posts: res?.posts ?? [] };
+    const res = await api.posts.list({ page: 1, limit: 5 });
+    // Normalize response from { data: Post[] } or fallback shapes
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.data)) return res.data;
+    if (Array.isArray((res as any)?.posts)) return (res as any).posts;
+    return [];
   } catch (error) {
     console.error("Failed to load initial posts:", error);
-    return { posts: [] };
+    return [];
   }
 }
 
 export default async function HomePage() {
-  const { posts } = await getInitialPosts();
-  
-  const safePosts = Array.isArray(posts) ? posts : [];
-  const featuredPost = safePosts.length > 0 ? safePosts[0] : null;
-  const feedPosts = safePosts.length > 1 ? safePosts.slice(1) : [];
+  const posts = await getInitialPosts();
+  const latestFive = posts.slice(0, 5);
 
   return (
-    <div className="min-h-screen pb-24">
-      <GlassNavbar />
+    <div className="min-h-screen pb-24 bg-slate-950 text-slate-100">
 
       <main className="mx-auto max-w-6xl px-4 pt-10">
         {/* Hero Section */}
@@ -45,115 +40,98 @@ export default async function HomePage() {
           </p>
         </section>
 
-        {/* Empty State */}
-        {safePosts.length === 0 ? (
-          <div className="rounded-3xl liquid-glass p-12 text-center my-8 border border-white/10 shadow-2xl">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.03] border border-white/10 text-cyan-400">
-              <PenLine className="h-6 w-6" />
+        {/* Translucent Container: Last 5 Posts + More Categories Button */}
+        <section className="rounded-3xl liquid-glass p-6 sm:p-8 border border-white/10 shadow-2xl backdrop-blur-xl bg-slate-900/40 space-y-6">
+          <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <div>
+              <h2 className="text-lg font-bold text-white tracking-tight">
+                Latest Publications
+              </h2>
+              <p className="text-xs text-slate-400">
+                Recent articles, guides, and engineering updates
+              </p>
             </div>
-            <h2 className="text-xl font-bold text-white mb-2">No articles published yet</h2>
-            <p className="text-sm text-slate-400 max-w-md mx-auto mb-6">
-              The publication system is live. Sign in to your dashboard studio to write and publish the first dispatch.
-            </p>
+
             <Link
-              href="/login"
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-500/20 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-cyan-300 border border-cyan-400/40 shadow-[0_0_20px_rgba(6,182,212,0.15)] hover:bg-cyan-500/30 transition-all"
+              href="/categories"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-400 hover:text-cyan-300 transition-colors"
             >
-              <span>Go to Studio</span>
+              <span>Explore Categories</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
-        ) : (
-          <>
-            {/* Featured Article Card */}
-            {featuredPost && (
-              <section className="mb-14">
-                <div className="flex items-center justify-between mb-4 px-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-cyan-400">
-                    Featured Dispatch
-                  </span>
-                </div>
-                <Link
-                  href={`/posts/${featuredPost.slug}`}
-                  className="group block relative rounded-3xl liquid-glass-elevated overflow-hidden border border-white/15 p-6 sm:p-8 hover:border-cyan-400/40 transition-all duration-300 shadow-2xl"
-                >
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-                    {/* Cover Preview */}
-                    <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60">
-                      {featuredPost.coverImage ? (
-                        <img
-                          src={getAssetUrl(featuredPost.coverImage)}
-                          alt={featuredPost.title}
-                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        />
+
+          {latestFive.length === 0 ? (
+            <div className="py-12 text-center space-y-2">
+              <p className="text-sm font-medium text-white">No articles published yet</p>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                Check back soon or browse our topic categories below.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {latestFive.map((post) => {
+                const cover = post.coverImage ? getAssetUrl(post.coverImage) : null;
+                const displayDate = post.publishedAt
+                  ? new Date(post.publishedAt).toLocaleDateString()
+                  : new Date(post.createdAt).toLocaleDateString();
+
+                return (
+                  <Link
+                    key={post.id || post.slug}
+                    href={`/posts/${encodeURIComponent(post.slug)}`}
+                    className="group flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4 px-2 -mx-2 rounded-2xl hover:bg-white/[0.03] transition-colors"
+                  >
+                    <div className="flex items-start sm:items-center gap-4">
+                      {cover ? (
+                        <div className="h-14 w-20 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-slate-900">
+                          <img
+                            src={cover}
+                            alt={post.title}
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          />
+                        </div>
                       ) : (
-                        <div className="h-full w-full flex items-center justify-center bg-gradient-to-tr from-cyan-950/40 to-slate-900">
-                          <span className="text-xs font-mono text-cyan-500/50 uppercase tracking-widest">
-                            No Cover Image
-                          </span>
+                        <div className="h-14 w-20 shrink-0 rounded-xl border border-white/10 bg-slate-900/80 flex items-center justify-center text-slate-600">
+                          <span className="text-[10px] font-mono">Article</span>
                         </div>
                       )}
-                    </div>
 
-                    {/* Metadata & Headline */}
-                    <div className="flex flex-col justify-between space-y-4">
-                      <div className="space-y-3">
-                        {featuredPost.categorySlugs && featuredPost.categorySlugs.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {featuredPost.categorySlugs.map((cat) => (
-                              <span
-                                key={cat}
-                                className="rounded-md bg-white/5 border border-white/10 px-2 py-0.5 text-[11px] font-medium text-slate-300"
-                              >
-                                #{cat}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white group-hover:text-cyan-200 transition-colors">
-                          {featuredPost.title}
-                        </h2>
-
-                        {featuredPost.summary && (
-                          <p className="text-sm text-slate-400 line-clamp-3 leading-relaxed font-light">
-                            {featuredPost.summary}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between border-t border-white/5 pt-4 text-xs text-slate-500">
-                        <span>
-                          By {featuredPost.authorUsername ? `@${featuredPost.authorUsername}` : "Author"}
-                        </span>
-                        <div className="inline-flex items-center gap-1 text-cyan-400 font-medium group-hover:translate-x-0.5 transition-transform">
-                          <span>Read Story</span>
-                          <ArrowRight className="h-3 w-3" />
-                        </div>
+                      <div className="space-y-1">
+                        <h3 className="text-sm sm:text-base font-semibold text-white group-hover:text-cyan-300 transition-colors line-clamp-1">
+                          {post.title}
+                        </h3>
+                        <p className="text-xs text-slate-400 line-clamp-1 max-w-xl">
+                          {post.summary || post.content.slice(0, 100)}
+                        </p>
                       </div>
                     </div>
-                  </div>
-                </Link>
-              </section>
-            )}
 
-            {/* Feed Grid */}
-            {feedPosts.length > 0 && (
-              <section className="space-y-6">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Latest Dispatches
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {feedPosts.map((post) => (
-                    <LiquidPostCard key={post.slug} post={post} />
-                  ))}
-                </div>
-              </section>
-            )}
-          </>
-        )}
+                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto text-xs text-slate-500">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                        <span>{displayDate}</span>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-slate-600 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+
+          {/* More Button navigating to Categories */}
+          <div className="pt-4 border-t border-white/10 flex justify-center">
+            <Link
+              href="/posts"
+              className="inline-flex items-center gap-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400/50 transition-all shadow-[0_0_15px_rgba(6,182,212,0.1)]"
+            >
+              <FolderTree className="h-4 w-4" />
+              <span>Explore More</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </section>
       </main>
     </div>
   );
