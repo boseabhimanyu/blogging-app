@@ -53,7 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
   label: "Account & Profile",
-  href: "/profile",
+  href: "/dashboard/profile",
   icon: Settings,
   roles: ["visitor", "publisher", "admin"],
   },
@@ -141,10 +141,10 @@ export default function DashboardLayout({
 
           {/* User Profile Capsule (Clickable -> Account & Profile) */}
           <Link
-            href="/profile"
-            className="rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center gap-3 hover:bg-white/[0.06] hover:border-cyan-500/30 transition-all group"
-            title="Manage Account & Profile"
-          >
+  href="/dashboard/settings"
+  className="rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center gap-3 hover:bg-white/[0.06] hover:border-cyan-500/30 transition-all group"
+  title="Manage Account & Profile"
+>
             <div className="h-10 w-10 rounded-full border border-white/15 overflow-hidden bg-slate-900 flex-shrink-0 flex items-center justify-center">
               {user.profilePic ? (
                 <img

@@ -387,7 +387,6 @@ func saveUploadedFile(
 	return err
 }
 
-// Status of user account
 func (s *UserService) UserStatus(
 	ctx context.Context,
 	adminID string,
@@ -398,6 +397,18 @@ func (s *UserService) UserStatus(
 		return ErrCannotChangeOwnStatus
 	}
 
+	// 1. Fetch target user to inspect role
+	targetUser, err := s.userRepository.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// 🔒 2. Prevent modifying another admin's status
+	if targetUser.Role == models.RoleAdmin {
+		return errors.New("cannot change the status of an administrator")
+	}
+
+	// 3. Persist update
 	return s.userRepository.UserStatus(
 		ctx,
 		userID,
@@ -551,7 +562,7 @@ func (s *UserService) ChangeUserPassword(
 	}
 
 	// Administrators can only reset customer passwords.
-	if user.Role != models.RoleVisitor {
+	if user.Role == models.RoleAdmin {
 		return ErrInvalidUserRole
 	}
 
@@ -583,7 +594,8 @@ func (s *UserService) UpdateUserProfile(
 		return nil, err
 	}
 
-	if customer.Role != models.RoleVisitor {
+	// Block modification if the target is an admin
+	if customer.Role == models.RoleAdmin {
 		return nil, ErrInvalidUserRole
 	}
 
@@ -659,12 +671,23 @@ func (s *UserService) UpdateRole(
 		return ErrInvalidUserRole
 	}
 
-	// Verify user exists and is not already the requested role
+	// 1. Enforce target role constraint: Can only switch between visitor and publisher
+	if newRole != models.RoleVisitor && newRole != models.RolePublisher {
+		return errors.New("admin can only assign visitor or publisher roles")
+	}
+
+	// 2. Verify target user exists
 	targetUser, err := s.userRepository.FindByID(ctx, targetUserID)
 	if err != nil {
 		return err
 	}
 
+	// 3. Admin accounts cannot have their role modified by peers
+	if targetUser.Role == models.RoleAdmin {
+		return errors.New("cannot modify the role of an administrator")
+	}
+
+	// 4. Return early if target already has this role
 	if targetUser.Role == newRole {
 		return nil
 	}

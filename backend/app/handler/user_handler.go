@@ -160,10 +160,15 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 }
 
 func (h *UserHandler) UpdateUserProfile(c *gin.Context) {
-	customerID := c.Param("id")
+	customerID := strings.TrimSpace(c.Param("id"))
+	if customerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "user id is required",
+		})
+		return
+	}
 
 	var req dto.UpdateUserProfileRequest
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid request body",
@@ -173,7 +178,7 @@ func (h *UserHandler) UpdateUserProfile(c *gin.Context) {
 
 	user, err := h.userService.UpdateUserProfile(
 		c.Request.Context(),
-		customerID,
+		customerID, // 👈 Exactly 3 arguments: ctx, ID, &req
 		&req,
 	)
 	if err != nil {
@@ -185,12 +190,12 @@ func (h *UserHandler) UpdateUserProfile(c *gin.Context) {
 
 		case errors.Is(err, services.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{
-				"error": "customer not found",
+				"error": "user not found",
 			})
 
 		case errors.Is(err, services.ErrInvalidUserRole):
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "target user is not a customer",
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "cannot modify administrator accounts",
 			})
 
 		case errors.Is(err, services.ErrEmailAlreadyExists),
@@ -212,12 +217,11 @@ func (h *UserHandler) UpdateUserProfile(c *gin.Context) {
 				"error": err.Error(),
 			})
 		}
-
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "customer updated successfully",
+		"message": "user updated successfully",
 		"user":    user,
 	})
 }

@@ -117,6 +117,33 @@ export const getAssetUrl = (path?: string): string => {
   return `${STORAGE_BASE}/${cleanPath}`;
 };
 
+export interface CreateUserPayload {
+  firstName: string;
+  lastName: string;
+  username: string;
+  email: string;
+  altEmail?: string;
+  phone: string;
+  password?: string;
+}
+
+export interface UpdateUserPayload {
+  firstName?: string;
+  lastName?: string;
+  username?: string;
+  email?: string;
+  altEmail?: string;
+  phone?: string;
+  role?: UserRole;
+  status?: boolean;
+  dateOfBirth?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  pinCode?: string;
+}
+
 // --- Axios Instance Setup ---
 
 const apiClient = axios.create({
@@ -266,20 +293,60 @@ export const api = {
 
   admin: {
     listUsers: async (params?: {
-      role?: UserRole;
-      status?: boolean | string;
+      role?: UserRole | "";
+      status?: "true" | "false" | "";
       search?: string;
       page?: number;
       limit?: number;
     }): Promise<UserListResponse> => {
-      const { data } = await apiClient.get<UserListResponse>("/users", { params });
+      const cleanParams: Record<string, any> = {};
+      if (params) {
+        if (params.role) cleanParams.role = params.role;
+        if (params.status) cleanParams.status = params.status;
+        if (params.search) cleanParams.search = params.search;
+        if (params.page) cleanParams.page = params.page;
+        if (params.limit) cleanParams.limit = params.limit;
+      }
+      const { data } = await apiClient.get<UserListResponse>("/users", { params: cleanParams });
       return data;
     },
 
-    updateUserRole: async (username: string, role: UserRole) => {
-      const { data } = await apiClient.patch<{ message: string; user: User }>(
-        `/users/${encodeURIComponent(username)}/role`,
+    getUser: async (id: string): Promise<User> => {
+      const { data } = await apiClient.get<{ customer: User }>(`/users/${id}`);
+      return data.customer;
+    },
+
+    createUser: async (payload: CreateUserPayload): Promise<User> => {
+      const { data } = await apiClient.post<{ message: string; user: User }>("/users", payload);
+      return data.user;
+    },
+
+    updateUser: async (id: string, payload: UpdateUserPayload): Promise<User> => {
+      const { data } = await apiClient.patch<{ message: string; user: User }>(`/users/${id}`, payload);
+      return data.user;
+    },
+
+    // ➕ Add these 3 methods below:
+    updateUserStatus: async (id: string, status: boolean): Promise<{ message: string; status: boolean }> => {
+      const { data } = await apiClient.patch<{ message: string; status: boolean }>(
+        `/users/${id}/status`,
+        { status }
+      );
+      return data;
+    },
+
+    updateUserRole: async (id: string, role: UserRole): Promise<{ message: string; role: UserRole }> => {
+      const { data } = await apiClient.patch<{ message: string; role: UserRole }>(
+        `/users/${id}/role`,
         { role }
+      );
+      return data;
+    },
+
+    resetUserPassword: async (id: string, newPassword: string): Promise<{ message: string }> => {
+      const { data } = await apiClient.patch<{ message: string }>(
+        `/users/${id}/password`,
+        { newPassword }
       );
       return data;
     },
