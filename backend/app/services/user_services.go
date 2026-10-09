@@ -694,3 +694,23 @@ func (s *UserService) UpdateRole(
 
 	return s.userRepository.UpdateRole(ctx, targetUserID, newRole)
 }
+
+func (s *UserService) GetPublicAuthorByUsername(ctx context.Context, username string) (*dto.PublicAuthorResponse, error) {
+	user, err := s.userRepository.FindByUsername(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+
+	// Guard: only active publishers or admins can be viewed publicly
+	if !user.Status || (user.Role != models.RolePublisher && user.Role != models.RoleAdmin) {
+		return nil, ErrAuthorNotFound
+	}
+
+	return &dto.PublicAuthorResponse{
+		FirstName:  user.FirstName,
+		LastName:   user.LastName,
+		Username:   user.Username,
+		ProfilePic: user.ProfilePic,
+		Role:       user.Role,
+	}, nil
+}

@@ -50,3 +50,11 @@ type UserStatusRequest struct {
 type UpdateRoleRequest struct {
 	Role models.UserRole `json:"role" binding:"required"`
 }
+
+type PublicAuthorResponse struct {
+	FirstName  string          `json:"firstName"`
+	LastName   string          `json:"lastName"`
+	Username   string          `json:"username"`
+	ProfilePic string          `json:"profilePic"`
+	Role       models.UserRole `json:"role"`
+}

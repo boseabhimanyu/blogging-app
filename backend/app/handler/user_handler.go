@@ -9,6 +9,7 @@ import (
 	"blogging-app/services"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 type UserHandler struct {
@@ -546,4 +547,24 @@ func (h *UserHandler) UpdateRole(c *gin.Context) {
 		"message": "user role updated successfully",
 		"role":    req.Role,
 	})
+}
+
+func (h *UserHandler) GetPublicAuthor(c *gin.Context) {
+	username := strings.TrimSpace(c.Param("username"))
+	if username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required"})
+		return
+	}
+
+	author, err := h.userService.GetPublicAuthorByUsername(c.Request.Context(), username)
+	if err != nil {
+		if errors.Is(err, services.ErrAuthorNotFound) || errors.Is(err, mongo.ErrNoDocuments) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Author not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch author details"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": author})
 }

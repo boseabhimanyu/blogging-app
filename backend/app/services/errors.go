@@ -21,4 +21,5 @@ var (
 	ErrRegistrationDisabled  = errors.New("user registration is currently disabled by administrator")
 	ErrInvalidCategory       = errors.New("one or more specified categories do not exist")
 	ErrSlugAlreadyInUse      = errors.New("slug already in use")
+	ErrAuthorNotFound        = errors.New("Author not found")
 )
