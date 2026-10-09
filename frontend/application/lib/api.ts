@@ -144,6 +144,12 @@ export interface UpdateUserPayload {
   pinCode?: string;
 }
 
+export interface AppSettings {
+  id: string;
+  allowRegistration: boolean;
+  updatedAt: string;
+}
+
 // --- Axios Instance Setup ---
 
 const apiClient = axios.create({
@@ -349,6 +355,20 @@ export const api = {
         { newPassword }
       );
       return data;
+    },
+  getSettings: async (): Promise<AppSettings> => {
+      const { data } = await apiClient.get<{ data: AppSettings }>(
+        "/settings"
+      );
+      return data.data;
+    },
+
+    updateSettings: async (allowRegistration: boolean): Promise<AppSettings> => {
+      const { data } = await apiClient.patch<{ data: AppSettings }>(
+        "/admin/settings",
+        { allowRegistration }
+      );
+      return data.data;
     },
   },
 };
