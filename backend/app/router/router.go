@@ -182,7 +182,7 @@ func NewRouter(database *mongo.Database, cfg config.Config) *gin.Engine {
 
 	// Public route (optional: allows frontend to know whether to show the "Register" button)
 	r.GET("/api/v1/settings", settingHandler.GetSettings)
-	r.GET("/api/v1/authors/:username", userHandler.GetPublicAuthor)
+	r.GET("/api/v1/authors/:id", userHandler.GetPublicAuthor)
 
 	// Admin-only management
 	settingRoutes := r.Group("/api/v1/admin")

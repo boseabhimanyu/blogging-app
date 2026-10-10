@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
-import { api, type Post, type Category, type User } from "@/lib/api";
+import { api, type Post, type Category, type User, type PublicAuthor } from "@/lib/api";
 import {
   Search,
   Plus,
@@ -26,7 +26,7 @@ export default function DashboardPostsPage() {
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [authorMap, setAuthorMap] = useState<Record<string, User>>({});
+  const [authorMap, setAuthorMap] = useState<Record<string, PublicAuthor>>({});
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export default function DashboardPostsPage() {
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Ref to prevent duplicate background author network requests
+  // Ref to track author IDs already fetched/in-flight
   const fetchedAuthorIdsRef = useRef<Set<string>>(new Set());
 
   // 1. Initial auth & category resolution
@@ -76,7 +76,6 @@ export default function DashboardPostsPage() {
       let res;
       if (currentUser.role === "admin") {
         if (selectedAuthorId === "me") {
-          // Hits /api/v1/posts/me (or adminList with current user id)
           res = await api.posts.myPosts(params);
         } else {
           if (selectedAuthorId !== "all") {
@@ -91,10 +90,14 @@ export default function DashboardPostsPage() {
       const postList = res.data || [];
       setPosts(postList);
 
-      // 3. For admins, resolve missing author details in the background without causing re-renders
+      // 3. For admins, resolve missing author details using public GET /api/v1/authors/:id
       if (currentUser.role === "admin") {
         const uniqueAuthorIds = Array.from(
-          new Set(postList.map((p) => p.authorId).filter(Boolean))
+          new Set(
+            postList
+              .map((p) => p.authorId)
+              .filter((id): id is string => typeof id === "string" && id.length > 0)
+          )
         );
 
         const idsToFetch = uniqueAuthorIds.filter(
@@ -102,23 +105,22 @@ export default function DashboardPostsPage() {
         );
 
         if (idsToFetch.length > 0) {
-          // Mark immediately as in-flight
           idsToFetch.forEach((id) => fetchedAuthorIdsRef.current.add(id));
 
-          Promise.allSettled(idsToFetch.map((id) => api.admin.getUser(id))).then(
-            (results) => {
-              const newMap: Record<string, User> = {};
-              results.forEach((result, idx) => {
-                if (result.status === "fulfilled" && result.value) {
-                  newMap[idsToFetch[idx]] = result.value;
-                }
-              });
-
-              if (Object.keys(newMap).length > 0) {
-                setAuthorMap((prev) => ({ ...prev, ...newMap }));
+          Promise.allSettled(
+            idsToFetch.map((id) => api.authors.getById(id))
+          ).then((results) => {
+            const newMap: Record<string, PublicAuthor> = {};
+            results.forEach((result, idx) => {
+              if (result.status === "fulfilled" && result.value) {
+                newMap[idsToFetch[idx]] = result.value;
               }
+            });
+
+            if (Object.keys(newMap).length > 0) {
+              setAuthorMap((prev) => ({ ...prev, ...newMap }));
             }
-          );
+          });
         }
       }
     } catch (err: unknown) {
@@ -126,7 +128,7 @@ export default function DashboardPostsPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser, statusFilter, selectedAuthorId]); // Stable: authorMap is NOT in the dependencies
+  }, [currentUser, statusFilter, selectedAuthorId]);
 
   useEffect(() => {
     if (!authLoading && currentUser) {
@@ -146,18 +148,19 @@ export default function DashboardPostsPage() {
   const filteredPosts = useMemo(() => {
     return posts.filter((post) => {
       const matchesCategory =
-        categoryFilter === "all" || post.categoryIds?.includes(categoryFilter);
+        categoryFilter === "all" ||
+        (Boolean(post.categoryIds) && post.categoryIds!.includes(categoryFilter));
       const q = search.toLowerCase().trim();
-      const matchesSearch =
-        !q ||
-        post.title.toLowerCase().includes(q) ||
-        post.slug.toLowerCase().includes(q);
+      const title = post.title?.toLowerCase() || "";
+      const slug = post.slug?.toLowerCase() || "";
+      const matchesSearch = !q || title.includes(q) || slug.includes(q);
 
       return matchesCategory && matchesSearch;
     });
   }, [posts, categoryFilter, search]);
 
-  const handleDelete = async (slug: string) => {
+  const handleDelete = async (slug?: string) => {
+    if (!slug) return;
     if (!window.confirm("Are you sure you want to delete this article?")) return;
     setActionLoading(slug);
     try {
@@ -171,6 +174,7 @@ export default function DashboardPostsPage() {
   };
 
   const handleToggleStatus = async (post: Post) => {
+    if (!post.slug) return;
     const nextStatus = post.status === "published" ? "draft" : "published";
     setActionLoading(post.slug);
     try {
@@ -199,7 +203,7 @@ export default function DashboardPostsPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
-      {/* Top Header */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -258,7 +262,7 @@ export default function DashboardPostsPage() {
           />
         </div>
 
-        {/* Admin Author Selector with 'My Articles' */}
+        {/* Admin Author Selector */}
         {isAdmin && (
           <div className="relative">
             <select
@@ -267,12 +271,10 @@ export default function DashboardPostsPage() {
               className="w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-xs text-slate-300 focus:border-cyan-500 focus:outline-none"
             >
               <option value="all">All Authors</option>
-              <option value="me" className="text-cyan-400 font-semibold">
-                ★ My Articles Only
-              </option>
+              <option value="me">★ My Articles Only</option>
               <optgroup label="Filter By Specific Author">
                 {Object.values(authorMap)
-                  .filter((author) => author.id !== currentUser.id)
+                  .filter((author) => author.id !== currentUser?.id)
                   .map((author) => {
                     const name =
                       `${author.firstName} ${author.lastName}`.trim() || author.username;
@@ -352,7 +354,7 @@ export default function DashboardPostsPage() {
               </thead>
               <tbody className="divide-y divide-white/5 text-slate-300">
                 {filteredPosts.map((post) => {
-                  const isBusy = actionLoading === post.slug;
+                  const isBusy = Boolean(post.slug && actionLoading === post.slug);
                   const author = post.authorId ? authorMap[post.authorId] : null;
                   const authorDisplayName = author
                     ? `${author.firstName} ${author.lastName}`.trim() || author.username
@@ -373,7 +375,9 @@ export default function DashboardPostsPage() {
                         <td className="px-5 py-4">
                           {post.authorId ? (
                             <button
-                              onClick={() => setSelectedAuthorId(post.authorId)}
+                              onClick={() => {
+                                if (post.authorId) setSelectedAuthorId(post.authorId);
+                              }}
                               className="group inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-cyan-300 transition-colors"
                               title={`Filter by author: ${authorDisplayName}`}
                             >
@@ -443,7 +447,7 @@ export default function DashboardPostsPage() {
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {post.status === "published" && (
+                          {post.status === "published" && post.slug && (
                             <Link
                               href={`/posts/${encodeURIComponent(post.slug)}`}
                               target="_blank"
@@ -454,17 +458,19 @@ export default function DashboardPostsPage() {
                             </Link>
                           )}
 
-                          <Link
-                            href={`/dashboard/posts/editor?slug=${encodeURIComponent(post.slug)}`}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors"
-                            title="Edit Post"
-                          >
-                            <Edit className="h-3.5 w-3.5" />
-                          </Link>
+                          {post.slug && (
+                            <Link
+                              href={`/dashboard/posts/editor?slug=${encodeURIComponent(post.slug)}`}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                              title="Edit Post"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </Link>
+                          )}
 
                           <button
                             onClick={() => handleDelete(post.slug)}
-                            disabled={isBusy}
+                            disabled={isBusy || !post.slug}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
                             title="Delete Post"
                           >

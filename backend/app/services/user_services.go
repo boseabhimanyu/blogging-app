@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"go.mongodb.org/mongo-driver/v2/bson"
+
 	"blogging-app/dto"
 	"blogging-app/models"
 	"blogging-app/repository"
@@ -695,18 +697,19 @@ func (s *UserService) UpdateRole(
 	return s.userRepository.UpdateRole(ctx, targetUserID, newRole)
 }
 
-func (s *UserService) GetPublicAuthorByUsername(ctx context.Context, username string) (*dto.PublicAuthorResponse, error) {
-	user, err := s.userRepository.FindByUsername(ctx, username)
+func (s *UserService) GetPublicAuthor(ctx context.Context, id bson.ObjectID) (*dto.PublicAuthorResponse, error) {
+	user, err := s.userRepository.FindByID(ctx, id.Hex())
 	if err != nil {
 		return nil, err
 	}
 
 	// Guard: only active publishers or admins can be viewed publicly
-	if !user.Status || (user.Role != models.RolePublisher && user.Role != models.RoleAdmin) {
+	if !user.Status || (user.Role != "publisher" && user.Role != "admin") {
 		return nil, ErrAuthorNotFound
 	}
 
 	return &dto.PublicAuthorResponse{
+		ID:         user.ID.Hex(),
 		FirstName:  user.FirstName,
 		LastName:   user.LastName,
 		Username:   user.Username,

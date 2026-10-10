@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Calendar, User, Clock } from "lucide-react";
 import { GlassNavbar } from "@/components/ui/GlassNavbar";
-import { api, getAssetUrl, type Post } from "@/lib/api";
+import { api, getAssetUrl, type Post, type PublicAuthor } from "@/lib/api";
 
 interface PostPageProps {
   params: Promise<{
@@ -52,12 +52,29 @@ export default async function PostPage({ params }: PostPageProps) {
     notFound();
   }
 
+  // Fetch author details on the server using post.authorId
+  let author: PublicAuthor | null = null;
+  if (post.authorId) {
+    try {
+      author = await api.authors.getById(post.authorId);
+    } catch {
+      author = null;
+    }
+  }
+
   const readingTime = getReadingTime(post.content || "");
-  const formattedDate = new Date(post.createdAt).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  const formattedDate = new Date(post.publishedAt || post.createdAt).toLocaleDateString(
+    "en-US",
+    {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }
+  );
+
+  const authorDisplayName = author
+    ? `${author.firstName} ${author.lastName}`.trim() || author.username
+    : "Author";
 
   return (
     <div className="min-h-screen pb-24">
@@ -78,16 +95,15 @@ export default async function PostPage({ params }: PostPageProps) {
         {/* Article Header Card */}
         <header className="rounded-3xl liquid-glass p-6 sm:p-10 mb-8">
           {/* Category Badges */}
-          {post.categorySlugs && post.categorySlugs.length > 0 && (
+          {post.categoryIds && post.categoryIds.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4">
-              {post.categorySlugs.map((categorySlug) => (
-                <Link
-                  key={categorySlug}
-                  href={`/categories/${categorySlug}`}
-                  className="rounded-lg border border-cyan-500/25 bg-cyan-950/40 px-2.5 py-1 text-xs font-semibold tracking-wide text-cyan-300 backdrop-blur-md hover:border-cyan-400/50 transition-colors"
+              {post.categoryIds.map((catId: string) => (
+                <span
+                  key={catId}
+                  className="rounded-lg border border-cyan-500/25 bg-cyan-950/40 px-2.5 py-1 text-xs font-semibold tracking-wide text-cyan-300 backdrop-blur-md"
                 >
-                  #{categorySlug}
-                </Link>
+                  #{catId}
+                </span>
               ))}
             </div>
           )}
@@ -107,23 +123,44 @@ export default async function PostPage({ params }: PostPageProps) {
           {/* Author & Timestamp Bar */}
           <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6 text-sm text-slate-400">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-slate-300">
-                <User className="h-5 w-5" />
+              {/* Profile Avatar */}
+              <div className="relative h-10 w-10 overflow-hidden rounded-full border border-white/15 bg-white/5 flex items-center justify-center shrink-0">
+                {author?.profilePic ? (
+                  <img
+                    src={getAssetUrl(author.profilePic)}
+                    alt={authorDisplayName}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <User className="h-5 w-5 text-slate-300" />
+                )}
               </div>
+
+              {/* Author Identity & Role */}
               <div>
                 <span className="block text-xs uppercase tracking-wider text-slate-500 font-semibold">
                   Written by
                 </span>
-                {post.authorUsername ? (
-                  <Link
-                    href={`/authors/${post.authorUsername}`}
-                    className="font-medium text-slate-200 hover:text-cyan-300 transition-colors"
-                  >
-                    @{post.authorUsername}
-                  </Link>
-                ) : (
-                  <span className="font-medium text-slate-200">Author</span>
-                )}
+                <div className="flex items-center gap-2">
+                  {author?.username ? (
+                    <Link
+                      href={`/authors/${author.username}`}
+                      className="font-medium text-slate-200 hover:text-cyan-300 transition-colors"
+                    >
+                      {authorDisplayName}
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-slate-200">
+                      {authorDisplayName}
+                    </span>
+                  )}
+
+                  {author?.role && (
+                    <span className="rounded bg-white/5 border border-white/10 px-1.5 py-0.5 text-[10px] text-slate-400 capitalize">
+                      {author.role}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

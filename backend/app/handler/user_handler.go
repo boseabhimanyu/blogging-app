@@ -9,6 +9,7 @@ import (
 	"blogging-app/services"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -550,13 +551,15 @@ func (h *UserHandler) UpdateRole(c *gin.Context) {
 }
 
 func (h *UserHandler) GetPublicAuthor(c *gin.Context) {
-	username := strings.TrimSpace(c.Param("username"))
-	if username == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required"})
+	idHex := c.Param("id")
+
+	objID, err := bson.ObjectIDFromHex(idHex)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid author ID"})
 		return
 	}
 
-	author, err := h.userService.GetPublicAuthorByUsername(c.Request.Context(), username)
+	author, err := h.userService.GetPublicAuthor(c.Request.Context(), objID)
 	if err != nil {
 		if errors.Is(err, services.ErrAuthorNotFound) || errors.Is(err, mongo.ErrNoDocuments) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Author not found"})

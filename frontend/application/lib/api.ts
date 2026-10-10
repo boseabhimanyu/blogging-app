@@ -67,18 +67,19 @@ export interface ChangePasswordPayload {
 
 export interface Post {
   id: string;
-  title: string;
   slug: string;
-  summary: string;
+  title: string;
+  summary?: string;
   content: string;
   coverImage?: string;
-  authorId: string;
-  categoryIds: string[];
-  tagIds: string[];
-  status: PostStatus;
-  publishedAt?: string | null;
+  status: "draft" | "published";
+  authorId?: string;
+  authorUsername?: string;       // <-- Added
+  categoryIds?: string[];
+  categorySlugs?: string[];     // <-- Added
   createdAt: string;
   updatedAt: string;
+  publishedAt?: string | null;
 }
 
 export interface PostListResponse {
@@ -171,6 +172,15 @@ export interface UpdateCategoryPayload {
   name: string;
   slug?: string;
   description?: string;
+}
+
+export interface PublicAuthor {
+  id: string;
+  firstName: string;
+  lastName: string;
+  username: string;
+  profilePic?: string;
+  role: string;
 }
 
 // --- Storage URL Formatter ---
@@ -464,6 +474,14 @@ export const api = {
         `/admin/categories/${id}`
       );
       return data;
+    },
+  },
+  authors: {
+    getById: async (id: string): Promise<PublicAuthor> => {
+      const { data } = await apiClient.get<{ data: PublicAuthor }>(
+        `/authors/${encodeURIComponent(id)}`
+      );
+      return data.data;
     },
   },
 };

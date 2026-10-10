@@ -52,6 +52,7 @@ type UpdateRoleRequest struct {
 }
 
 type PublicAuthorResponse struct {
+	ID         string          `json:"id"`
 	FirstName  string          `json:"firstName"`
 	LastName   string          `json:"lastName"`
 	Username   string          `json:"username"`
